@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
   process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
 )
 
 export const handler = async (event, context) => {
@@ -30,6 +30,12 @@ export const handler = async (event, context) => {
 
   try {
     console.log('✅ Acknowledge alert function called')
+    console.log('🔍 Environment check:')
+    console.log('  SUPABASE_URL:', process.env.SUPABASE_URL ? '✅ Set' : '❌ Missing')
+    console.log('  VITE_SUPABASE_URL:', process.env.VITE_SUPABASE_URL ? '✅ Set' : '❌ Missing')
+    console.log('  SUPABASE_SERVICE_ROLE_KEY:', process.env.SUPABASE_SERVICE_ROLE_KEY ? '✅ Set' : '❌ Missing')
+    console.log('  SUPABASE_ANON_KEY:', process.env.SUPABASE_ANON_KEY ? '✅ Set' : '❌ Missing')
+    console.log('  VITE_SUPABASE_ANON_KEY:', process.env.VITE_SUPABASE_ANON_KEY ? '✅ Set' : '❌ Missing')
     
     let body
     try {
@@ -78,7 +84,9 @@ export const handler = async (event, context) => {
         headers: { 'Access-Control-Allow-Origin': '*' },
         body: JSON.stringify({ 
           error: 'Failed to update alert',
-          details: error.message 
+          details: error.message,
+          code: error.code,
+          hint: error.hint
         })
       }
     }
@@ -113,7 +121,8 @@ export const handler = async (event, context) => {
       headers: { 'Access-Control-Allow-Origin': '*' },
       body: JSON.stringify({ 
         error: 'Internal server error', 
-        details: error.message 
+        details: error.message,
+        stack: error.stack
       })
     }
   }

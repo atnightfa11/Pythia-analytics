@@ -21,6 +21,28 @@ export const handler = async (event, context) => {
 
   try {
     console.log('🚨 Fetching alerts from database...')
+    console.log('🔍 Environment check:')
+    console.log('  SUPABASE_URL:', process.env.SUPABASE_URL ? '✅ Set' : '❌ Missing')
+    console.log('  VITE_SUPABASE_URL:', process.env.VITE_SUPABASE_URL ? '✅ Set' : '❌ Missing')
+    console.log('  SUPABASE_ANON_KEY:', process.env.SUPABASE_ANON_KEY ? '✅ Set' : '❌ Missing')
+    console.log('  VITE_SUPABASE_ANON_KEY:', process.env.VITE_SUPABASE_ANON_KEY ? '✅ Set' : '❌ Missing')
+    
+    // Check if we have the required environment variables
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
+    const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
+    
+    if (!supabaseUrl || !supabaseKey) {
+      console.error('❌ Missing Supabase credentials')
+      return {
+        statusCode: 500,
+        headers: { 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify({ 
+          error: 'Missing Supabase credentials',
+          details: 'SUPABASE_URL and SUPABASE_ANON_KEY (or VITE_ prefixed versions) must be set',
+          available: Object.keys(process.env).filter(key => key.includes('SUPABASE'))
+        })
+      }
+    }
     
     // Get query parameters
     const url = new URL(event.rawUrl || `https://example.com${event.path}`)
@@ -60,7 +82,9 @@ export const handler = async (event, context) => {
         headers: { 'Access-Control-Allow-Origin': '*' },
         body: JSON.stringify({ 
           error: 'Failed to fetch alerts',
-          details: error.message 
+          details: error.message,
+          code: error.code,
+          hint: error.hint
         })
       }
     }
@@ -129,7 +153,8 @@ export const handler = async (event, context) => {
       headers: { 'Access-Control-Allow-Origin': '*' },
       body: JSON.stringify({ 
         error: 'Internal server error', 
-        details: error.message 
+        details: error.message,
+        stack: error.stack
       })
     }
   }
