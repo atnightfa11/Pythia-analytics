@@ -17,28 +17,93 @@ export const handler = async (event, context) => {
   try {
     console.log('🔧 Testing Supabase connection...')
     
-    // Check environment variables
-    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
-    const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
+    // Debug: Log ALL environment variables
+    console.log('🔍 ALL Environment Variables:')
+    console.log('  Total env vars:', Object.keys(process.env).length)
+    console.log('  All keys:', Object.keys(process.env))
+    console.log('  NODE_ENV:', process.env.NODE_ENV)
+    console.log('  NETLIFY:', process.env.NETLIFY)
+    console.log('  NETLIFY_DEV:', process.env.NETLIFY_DEV)
     
-    console.log('🔍 Environment check:')
-    console.log('  SUPABASE_URL:', supabaseUrl ? '✅ Set' : '❌ Missing')
-    console.log('  SUPABASE_ANON_KEY:', supabaseKey ? '✅ Set' : '❌ Missing')
-    console.log('  All SUPABASE env vars:', Object.keys(process.env).filter(key => key.includes('SUPABASE')))
+    // Check environment variables with multiple possible names
+    const possibleUrlKeys = [
+      'SUPABASE_URL',
+      'VITE_SUPABASE_URL', 
+      'REACT_APP_SUPABASE_URL',
+      'NEXT_PUBLIC_SUPABASE_URL'
+    ]
+    
+    const possibleKeyKeys = [
+      'SUPABASE_ANON_KEY',
+      'VITE_SUPABASE_ANON_KEY',
+      'REACT_APP_SUPABASE_ANON_KEY', 
+      'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+      'SUPABASE_SERVICE_ROLE_KEY'
+    ]
+    
+    console.log('🔍 Checking possible Supabase URL keys:')
+    possibleUrlKeys.forEach(key => {
+      const value = process.env[key]
+      console.log(`  ${key}:`, value ? `✅ Set (${value.substring(0, 20)}...)` : '❌ Missing')
+    })
+    
+    console.log('🔍 Checking possible Supabase key keys:')
+    possibleKeyKeys.forEach(key => {
+      const value = process.env[key]
+      console.log(`  ${key}:`, value ? `✅ Set (${value.substring(0, 20)}...)` : '❌ Missing')
+    })
+    
+    // Try to find any working combination
+    let supabaseUrl = null
+    let supabaseKey = null
+    
+    for (const urlKey of possibleUrlKeys) {
+      if (process.env[urlKey]) {
+        supabaseUrl = process.env[urlKey]
+        console.log(`✅ Found URL with key: ${urlKey}`)
+        break
+      }
+    }
+    
+    for (const keyKey of possibleKeyKeys) {
+      if (process.env[keyKey]) {
+        supabaseKey = process.env[keyKey]
+        console.log(`✅ Found key with key: ${keyKey}`)
+        break
+      }
+    }
     
     if (!supabaseUrl || !supabaseKey) {
+      console.error('❌ No valid Supabase credentials found')
       return {
         statusCode: 500,
         headers: { 'Access-Control-Allow-Origin': '*' },
         body: JSON.stringify({
           error: 'Missing Supabase credentials',
-          envVars: Object.keys(process.env).filter(key => key.includes('SUPABASE')),
-          supabaseUrl: !!supabaseUrl,
-          supabaseKey: !!supabaseKey,
-          details: 'Make sure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set in Netlify environment variables'
+          debug: {
+            totalEnvVars: Object.keys(process.env).length,
+            allEnvKeys: Object.keys(process.env),
+            supabaseRelated: Object.keys(process.env).filter(key => 
+              key.toLowerCase().includes('supabase')
+            ),
+            urlChecked: possibleUrlKeys.map(key => ({
+              key,
+              exists: !!process.env[key],
+              value: process.env[key] ? process.env[key].substring(0, 20) + '...' : null
+            })),
+            keyChecked: possibleKeyKeys.map(key => ({
+              key, 
+              exists: !!process.env[key],
+              value: process.env[key] ? process.env[key].substring(0, 20) + '...' : null
+            }))
+          },
+          suggestion: 'Check Netlify environment variables configuration'
         })
       }
     }
+
+    console.log(`🔗 Using URL: ${supabaseUrl.substring(0, 30)}...`)
+    console.log(`🔑 Using Key: ${supabaseKey.substring(0, 20)}...`)
 
     const supabase = createClient(supabaseUrl, supabaseKey)
     
@@ -59,7 +124,11 @@ export const handler = async (event, context) => {
           details: connectionError.message,
           code: connectionError.code,
           hint: connectionError.hint,
-          suggestion: 'Check if Supabase URL and key are correct'
+          suggestion: 'Check if Supabase URL and key are correct',
+          credentials: {
+            url: supabaseUrl ? 'Found' : 'Missing',
+            key: supabaseKey ? 'Found' : 'Missing'
+          }
         })
       }
     }
@@ -129,7 +198,12 @@ export const handler = async (event, context) => {
         verifiedRecord: verifyData,
         environment: {
           supabaseUrl: supabaseUrl ? 'Set' : 'Missing',
-          supabaseKey: supabaseKey ? 'Set' : 'Missing'
+          supabaseKey: supabaseKey ? 'Set' : 'Missing',
+          totalEnvVars: Object.keys(process.env).length
+        },
+        debug: {
+          foundUrlWith: possibleUrlKeys.find(key => process.env[key]),
+          foundKeyWith: possibleKeyKeys.find(key => process.env[key])
         },
         timestamp: new Date().toISOString()
       })
