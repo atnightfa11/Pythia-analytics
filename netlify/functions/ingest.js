@@ -26,36 +26,36 @@ export const handler = async (event, context) => {
     }
   }
 
-  // Check for required environment variables
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
-  const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
-
-  console.log('🔍 Environment variables check:')
-  console.log('  SUPABASE_URL:', supabaseUrl ? '✅ Present' : '❌ Missing')
-  console.log('  SUPABASE_ANON_KEY:', supabaseKey ? '✅ Present' : '❌ Missing')
-
-  if (!supabaseUrl || !supabaseKey) {
-    console.error('❌ Missing Supabase environment variables')
-    
-    return {
-      statusCode: 500,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ 
-        error: 'Server configuration error',
-        details: 'Supabase credentials not configured'
-      }),
-    }
-  }
-
-  // Create Supabase client with anon key (this will use the anon role)
-  const supabase = createClient(supabaseUrl, supabaseKey)
-
   try {
     console.log('📥 Ingest function called')
     console.log('📋 Request body:', event.body)
+    
+    // Check for required environment variables
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
+    const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
+
+    console.log('🔍 Environment variables check:')
+    console.log('  SUPABASE_URL:', supabaseUrl ? '✅ Present' : '❌ Missing')
+    console.log('  SUPABASE_ANON_KEY:', supabaseKey ? '✅ Present' : '❌ Missing')
+
+    if (!supabaseUrl || !supabaseKey) {
+      console.error('❌ Missing Supabase environment variables')
+      
+      return {
+        statusCode: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          error: 'Server configuration error',
+          details: 'Supabase credentials not configured'
+        }),
+      }
+    }
+
+    // Create Supabase client with anon key (this will use the anon role)
+    const supabase = createClient(supabaseUrl, supabaseKey)
     
     // Parse the incoming batch of events
     let batch

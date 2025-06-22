@@ -1,10 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
-)
-
 export const handler = async (event, context) => {
   // CORS preflight
   if (event.httpMethod === 'OPTIONS') {
@@ -43,6 +38,9 @@ export const handler = async (event, context) => {
         })
       }
     }
+    
+    // Create Supabase client inside the handler
+    const supabase = createClient(supabaseUrl, supabaseKey)
     
     // Get query parameters
     const url = new URL(event.rawUrl || `https://example.com${event.path}`)

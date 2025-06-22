@@ -1,10 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
-)
-
 export const handler = async (event, context) => {
   // CORS preflight
   if (event.httpMethod === 'OPTIONS') {
@@ -44,6 +39,9 @@ export const handler = async (event, context) => {
         })
       }
     }
+
+    // Create Supabase client inside the handler
+    const supabase = createClient(supabaseUrl, supabaseKey)
 
     // Check if we should generate a new forecast or return cached one
     const { data: latestForecast, error: latestError } = await supabase
