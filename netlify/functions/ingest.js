@@ -100,6 +100,8 @@ export const handler = async (event, context) => {
         event_type: String(evt.event_type || 'unknown'),
         count: Math.max(1, Math.round(Number(evt.count) || 1)), // Ensure positive integer
         timestamp: evt.timestamp || new Date().toISOString(),
+        session_id: evt.session_id || null,
+        device: evt.device || null
       }
       console.log(`📝 Processed event ${index + 1}:`, processed)
       return processed
@@ -159,8 +161,8 @@ export const handler = async (event, context) => {
     // Trigger alerter function after successful insertion
     try {
       console.log('🚨 Triggering alerter function...')
-      // Use NETLIFY_URL (automatically provided) or fallback to SITE_URL (custom)
-      const baseUrl = process.env.NETLIFY_URL || process.env.SITE_URL || 'https://cool-fox-2fba4f.netlify.app'
+      // Use the configured site URL
+      const baseUrl = process.env.NETLIFY_URL || process.env.SITE_URL || 'https://getpythia.tech'
       const alerterUrl = `${baseUrl}/.netlify/functions/alerter`
       console.log('📍 Alerter URL:', alerterUrl)
       
