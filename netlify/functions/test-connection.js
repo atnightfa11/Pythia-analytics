@@ -24,6 +24,7 @@ export const handler = async (event, context) => {
     console.log('🔍 Environment check:')
     console.log('  SUPABASE_URL:', supabaseUrl ? '✅ Set' : '❌ Missing')
     console.log('  SUPABASE_ANON_KEY:', supabaseKey ? '✅ Set' : '❌ Missing')
+    console.log('  All SUPABASE env vars:', Object.keys(process.env).filter(key => key.includes('SUPABASE')))
     
     if (!supabaseUrl || !supabaseKey) {
       return {
@@ -33,7 +34,8 @@ export const handler = async (event, context) => {
           error: 'Missing Supabase credentials',
           envVars: Object.keys(process.env).filter(key => key.includes('SUPABASE')),
           supabaseUrl: !!supabaseUrl,
-          supabaseKey: !!supabaseKey
+          supabaseKey: !!supabaseKey,
+          details: 'Make sure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set in Netlify environment variables'
         })
       }
     }
@@ -56,7 +58,8 @@ export const handler = async (event, context) => {
           error: 'Connection test failed',
           details: connectionError.message,
           code: connectionError.code,
-          hint: connectionError.hint
+          hint: connectionError.hint,
+          suggestion: 'Check if Supabase URL and key are correct'
         })
       }
     }
@@ -68,7 +71,9 @@ export const handler = async (event, context) => {
     const testEvent = {
       event_type: 'connection_test',
       count: 1,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      session_id: 'test-session-' + Date.now(),
+      device: 'Test'
     }
     
     const { data: insertData, error: insertError } = await supabase
@@ -122,6 +127,10 @@ export const handler = async (event, context) => {
         },
         insertedRecord: insertData,
         verifiedRecord: verifyData,
+        environment: {
+          supabaseUrl: supabaseUrl ? 'Set' : 'Missing',
+          supabaseKey: supabaseKey ? 'Set' : 'Missing'
+        },
         timestamp: new Date().toISOString()
       })
     }

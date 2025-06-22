@@ -191,10 +191,27 @@ export function Dashboard() {
 
         console.log('📊 Loading dashboard data...');
 
+        // Test connection first
+        try {
+          const testResponse = await fetch('/.netlify/functions/test-connection');
+          const testResult = await testResponse.json();
+          
+          if (!testResponse.ok) {
+            console.error('❌ Connection test failed:', testResult);
+            throw new Error(`Connection test failed: ${testResult.error || testResult.details}`);
+          }
+          
+          console.log('✅ Connection test passed:', testResult);
+        } catch (testError) {
+          console.error('❌ Connection test error:', testError);
+          throw new Error(`Database connection failed: ${testError.message}`);
+        }
+
         // Historical & real-time events
         const eventsResponse = await fetch('/.netlify/functions/get-events');
         if (!eventsResponse.ok) {
-          throw new Error(`Events API error: ${eventsResponse.status}`);
+          const errorData = await eventsResponse.json().catch(() => ({}));
+          throw new Error(`Events API error: ${eventsResponse.status} - ${errorData.error || errorData.details || eventsResponse.statusText}`);
         }
         const eventsData = await eventsResponse.json();
         
@@ -364,6 +381,17 @@ export function Dashboard() {
           <Loader2 className="w-8 h-8 text-sky-600 animate-spin mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-slate-900 mb-2">Loading Dashboard</h2>
           <p className="text-slate-600">Fetching your analytics data...</p>
+          {error && (
+            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg max-w-md mx-auto">
+              <p className="text-sm text-red-800">{error}</p>
+              <button
+                onClick={() => window.location.reload()}
+                className="mt-2 px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded transition-colors"
+              >
+                Retry
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -377,12 +405,22 @@ export function Dashboard() {
           <AlertTriangle className="w-8 h-8 text-red-600 mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-slate-900 mb-2">Failed to Load Data</h2>
           <p className="text-slate-600 mb-4">{error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg transition-colors"
-          >
-            Try Again
-          </button>
+          <div className="space-y-2">
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg transition-colors"
+            >
+              Try Again
+            </button>
+            <div className="text-xs text-slate-500">
+              <p>If this persists, check:</p>
+              <ul className="list-disc list-inside mt-1 space-y-1">
+                <li>Netlify environment variables are set</li>
+                <li>Supabase database is accessible</li>
+                <li>Functions are deployed correctly</li>
+              </ul>
+            </div>
+          </div>
         </div>
       </div>
     );

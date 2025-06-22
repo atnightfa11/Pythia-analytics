@@ -21,6 +21,28 @@ export const handler = async (event, context) => {
 
   try {
     console.log('📊 Fetching events for dashboard...')
+    console.log('🔍 Environment check:')
+    console.log('  SUPABASE_URL:', process.env.SUPABASE_URL ? '✅ Set' : '❌ Missing')
+    console.log('  VITE_SUPABASE_URL:', process.env.VITE_SUPABASE_URL ? '✅ Set' : '❌ Missing')
+    console.log('  SUPABASE_ANON_KEY:', process.env.SUPABASE_ANON_KEY ? '✅ Set' : '❌ Missing')
+    console.log('  VITE_SUPABASE_ANON_KEY:', process.env.VITE_SUPABASE_ANON_KEY ? '✅ Set' : '❌ Missing')
+    
+    // Check if we have the required environment variables
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
+    const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
+    
+    if (!supabaseUrl || !supabaseKey) {
+      console.error('❌ Missing Supabase credentials')
+      return {
+        statusCode: 500,
+        headers: { 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify({ 
+          error: 'Missing Supabase credentials',
+          details: 'SUPABASE_URL and SUPABASE_ANON_KEY must be set in environment variables',
+          available: Object.keys(process.env).filter(key => key.includes('SUPABASE'))
+        })
+      }
+    }
     
     // Get query parameters
     const url = new URL(event.rawUrl || `https://example.com${event.path}`)
@@ -37,7 +59,7 @@ export const handler = async (event, context) => {
     // Build query
     let query = supabase
       .from('events')
-      .select('timestamp, event_type, count')
+      .select('timestamp, event_type, count, session_id, device')
       .gte('timestamp', startDate.toISOString())
       .lte('timestamp', endDate.toISOString())
       .order('timestamp', { ascending: true })
@@ -53,7 +75,12 @@ export const handler = async (event, context) => {
       return {
         statusCode: 500,
         headers: { 'Access-Control-Allow-Origin': '*' },
-        body: JSON.stringify({ error: error.message })
+        body: JSON.stringify({ 
+          error: 'Database query failed',
+          details: error.message,
+          code: error.code,
+          hint: error.hint
+        })
       }
     }
 
@@ -98,7 +125,7 @@ export const handler = async (event, context) => {
     // Get recent events for real-time display
     const { data: recentEvents, error: recentError } = await supabase
       .from('events')
-      .select('timestamp, event_type, count')
+      .select('timestamp, event_type, count, session_id, device')
       .gte('timestamp', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()) // Last 24 hours
       .order('timestamp', { ascending: false })
       .limit(100)
@@ -152,7 +179,8 @@ export const handler = async (event, context) => {
       headers: { 'Access-Control-Allow-Origin': '*' },
       body: JSON.stringify({ 
         error: 'Internal server error', 
-        details: error.message 
+        details: error.message,
+        stack: error.stack
       })
     }
   }
