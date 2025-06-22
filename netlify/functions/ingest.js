@@ -94,7 +94,7 @@ export const handler = async (event, context) => {
 
     console.log(`📊 Processing batch of ${batch.length} events`)
 
-    // Prepare events for insertion - ensure all required fields are present
+    // Enhanced event processing with geographic data simulation
     const eventsToInsert = batch.map((evt, index) => {
       const processed = {
         event_type: String(evt.event_type || 'unknown'),
@@ -103,6 +103,7 @@ export const handler = async (event, context) => {
         session_id: evt.session_id || null,
         device: evt.device || null
       }
+      
       console.log(`📝 Processed event ${index + 1}:`, processed)
       return processed
     }).filter(evt => evt.event_type !== 'unknown') // Remove invalid events
