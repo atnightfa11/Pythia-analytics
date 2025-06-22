@@ -24,7 +24,7 @@ import {
   Loader2,
   Sliders
 } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, Legend } from 'recharts';
 import { format } from 'date-fns';
 
 // Types for our live data
@@ -35,6 +35,8 @@ interface TimeSeriesData {
   visitors?: number;
   pageviews?: number;
   events?: number;
+  forecast?: number;
+  isForecast?: boolean;
 }
 
 interface Alert {
@@ -57,7 +59,8 @@ const BRAND_COLORS = {
   success: '#10B981',
   warning: '#F59E0B',
   error: '#EF4444',
-  info: '#3B82F6'
+  info: '#3B82F6',
+  forecast: '#F97316' // Orange for forecast
 };
 
 // Device data colors using brand palette
@@ -168,6 +171,7 @@ export function Dashboard() {
   const [forecast, setForecast] = useState<number>(0);
   const [mape, setMape] = useState<number>(0);
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [forecastData, setForecastData] = useState<any>(null);
 
   // Additional state for UI
   const [loading, setLoading] = useState(true);
@@ -222,10 +226,9 @@ export function Dashboard() {
           date: item.date,
           visitors: item.count,
           pageviews: item.events * 2.5,
-          events: item.events
+          events: item.events,
+          isForecast: false
         })) || [];
-        
-        setTimeSeries(transformedTimeSeries);
         
         // Calculate live count from realtime data
         const realtimeTotal = eventsData.realtime?.reduce((sum: number, e: any) => sum + e.count, 0) || 0;
@@ -235,15 +238,35 @@ export function Dashboard() {
         try {
           const forecastResponse = await fetch('/.netlify/functions/get-forecast');
           if (forecastResponse.ok) {
-            const forecastData = await forecastResponse.json();
-            setForecast(forecastData.forecast || 0);
-            setMape(forecastData.mape || 15);
+            const forecastResult = await forecastResponse.json();
+            setForecast(forecastResult.forecast || 0);
+            setMape(forecastResult.mape || 15);
+            setForecastData(forecastResult);
+
+            // Add forecast point to time series if we have forecast data
+            if (forecastResult.forecast && forecastResult.forecast > 0) {
+              const forecastPoint: TimeSeriesData = {
+                hour: new Date().toISOString().split('T')[0], // Today's date
+                count: 0, // No actual count for forecast point
+                date: new Date().toISOString().split('T')[0],
+                visitors: 0,
+                pageviews: 0,
+                events: 0,
+                forecast: forecastResult.forecast,
+                isForecast: true
+              };
+              
+              // Add forecast point to the end of time series
+              transformedTimeSeries.push(forecastPoint);
+            }
           }
         } catch (forecastError) {
           console.warn('⚠️ Forecast fetch failed:', forecastError);
           setForecast(0);
           setMape(15);
         }
+
+        setTimeSeries(transformedTimeSeries);
 
         // Smart alerts
         try {
@@ -287,8 +310,24 @@ export function Dashboard() {
             date: item.date,
             visitors: item.count,
             pageviews: item.events * 2.5,
-            events: item.events
+            events: item.events,
+            isForecast: false
           })) || [];
+          
+          // Add forecast point if available
+          if (forecast > 0) {
+            const forecastPoint: TimeSeriesData = {
+              hour: new Date().toISOString().split('T')[0],
+              count: 0,
+              date: new Date().toISOString().split('T')[0],
+              visitors: 0,
+              pageviews: 0,
+              events: 0,
+              forecast: forecast,
+              isForecast: true
+            };
+            transformedTimeSeries.push(forecastPoint);
+          }
           
           setTimeSeries(transformedTimeSeries);
           setLiveCount(data.realtime?.reduce((sum: number, e: any) => sum + e.count, 0) || 0);
@@ -298,7 +337,7 @@ export function Dashboard() {
     }, 5 * 60 * 1000);
     
     return () => clearInterval(interval);
-  }, []);
+  }, [forecast]);
 
   // Test function for analytics
   const testAnalytics = () => {
@@ -368,10 +407,28 @@ export function Dashboard() {
     return [value, name];
   };
 
+  // Custom dot renderer for forecast points
+  const renderForecastDot = (props: any) => {
+    const { cx, cy, payload } = props;
+    if (payload.isForecast) {
+      return (
+        <circle
+          cx={cx}
+          cy={cy}
+          r={6}
+          fill={BRAND_COLORS.forecast}
+          stroke="#fff"
+          strokeWidth={2}
+        />
+      );
+    }
+    return null;
+  };
+
   // Calculate basic metrics from time series data
-  const totalVisitors = timeSeries.reduce((sum, item) => sum + (item.visitors || 0), 0);
-  const totalPageviews = timeSeries.reduce((sum, item) => sum + (item.pageviews || 0), 0);
-  const totalEvents = timeSeries.reduce((sum, item) => sum + (item.events || 0), 0);
+  const totalVisitors = timeSeries.filter(item => !item.isForecast).reduce((sum, item) => sum + (item.visitors || 0), 0);
+  const totalPageviews = timeSeries.filter(item => !item.isForecast).reduce((sum, item) => sum + (item.pageviews || 0), 0);
+  const totalEvents = timeSeries.filter(item => !item.isForecast).reduce((sum, item) => sum + (item.events || 0), 0);
 
   // Loading state
   if (loading && timeSeries.length === 0) {
@@ -623,8 +680,8 @@ export function Dashboard() {
                 </div>
                 {forecast > 0 && (
                   <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: BRAND_COLORS.secondary }}></div>
-                    <span className="text-xs text-slate-600">Predicted</span>
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: BRAND_COLORS.forecast }}></div>
+                    <span className="text-xs text-slate-600">Forecast</span>
                   </div>
                 )}
               </div>
@@ -649,12 +706,27 @@ export function Dashboard() {
                     }}
                     formatter={formatTooltipValue}
                   />
+                  <Legend />
+                  {/* Actual data line */}
                   <Line 
                     type="monotone" 
                     dataKey="count" 
+                    name="Actual"
                     stroke={BRAND_COLORS.primary}
                     strokeWidth={2}
                     dot={{ fill: BRAND_COLORS.primary, strokeWidth: 2, r: 4 }}
+                    connectNulls={false}
+                  />
+                  {/* Forecast line */}
+                  <Line 
+                    type="monotone" 
+                    dataKey="forecast" 
+                    name="Forecast"
+                    stroke={BRAND_COLORS.forecast}
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                    dot={renderForecastDot}
+                    connectNulls={false}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -674,7 +746,7 @@ export function Dashboard() {
               <ChartLoading />
             ) : (
               <ResponsiveContainer width="100%" height={300}>
-                <AreaChart data={timeSeries.slice(-24)}>
+                <AreaChart data={timeSeries.filter(item => !item.isForecast).slice(-24)}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis 
                     dataKey="hour" 
@@ -713,7 +785,7 @@ export function Dashboard() {
               <ChartLoading />
             ) : (
               <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={timeSeries.slice(-7)}>
+                <BarChart data={timeSeries.filter(item => !item.isForecast).slice(-7)}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis 
                     dataKey="hour" 
@@ -847,7 +919,7 @@ export function Dashboard() {
               <div>
                 <p className="text-sm font-medium text-slate-900">Session Tracking</p>
                 <p className="text-xs text-slate-600">
-                  {timeSeries.length} data points tracked
+                  {timeSeries.filter(item => !item.isForecast).length} data points tracked
                 </p>
               </div>
             </div>
