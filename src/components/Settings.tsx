@@ -16,6 +16,7 @@ import {
   Key,
   Users
 } from 'lucide-react';
+import { SlackTestPanel } from './SlackTestPanel';
 
 export function SettingsPanel() {
   const [settings, setSettings] = useState({
@@ -94,6 +95,9 @@ export function SettingsPanel() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Settings Panel */}
           <div className="lg:col-span-2 space-y-8">
+            {/* Slack Test Panel */}
+            <SlackTestPanel />
+
             {/* Privacy Settings */}
             <div className="bg-white rounded-xl border border-slate-200 p-6">
               <div className="flex items-center space-x-3 mb-6">
