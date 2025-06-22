@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
   process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
 )
 
 const SLACK_WEBHOOK = process.env.SLACK_WEBHOOK_URL
@@ -28,6 +28,24 @@ export const handler = async (event, context) => {
     console.log('  SLACK_WEBHOOK_URL:', SLACK_WEBHOOK ? '✅ Set' : '❌ Missing')
     console.log('  ALERT_THRESHOLD:', THRESHOLD)
     console.log('  SUPABASE_URL:', process.env.SUPABASE_URL ? '✅ Set' : '❌ Missing')
+    console.log('  VITE_SUPABASE_URL:', process.env.VITE_SUPABASE_URL ? '✅ Set' : '❌ Missing')
+
+    // Check if we have the required environment variables
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
+    
+    if (!supabaseUrl || !supabaseKey) {
+      console.error('❌ Missing Supabase credentials')
+      return {
+        statusCode: 500,
+        headers: { 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify({ 
+          error: 'Missing Supabase credentials',
+          details: 'SUPABASE_URL and SUPABASE_ANON_KEY (or VITE_ prefixed versions) must be set',
+          available: Object.keys(process.env).filter(key => key.includes('SUPABASE'))
+        })
+      }
+    }
 
     // Get latest actual data
     console.log('📊 Fetching latest event data...')
@@ -44,7 +62,9 @@ export const handler = async (event, context) => {
         headers: { 'Access-Control-Allow-Origin': '*' },
         body: JSON.stringify({ 
           error: 'Failed to fetch latest data',
-          details: fetchErr.message 
+          details: fetchErr.message,
+          code: fetchErr.code,
+          hint: fetchErr.hint
         })
       }
     }
@@ -184,7 +204,9 @@ export const handler = async (event, context) => {
           headers: { 'Access-Control-Allow-Origin': '*' },
           body: JSON.stringify({
             error: 'Failed to save alert',
-            details: insertError.message
+            details: insertError.message,
+            code: insertError.code,
+            hint: insertError.hint
           })
         }
       }
