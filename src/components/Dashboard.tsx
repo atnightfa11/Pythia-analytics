@@ -21,12 +21,12 @@ import {
   WifiOff,
   Check,
   X,
-  Loader2,
-  Sliders
+  Loader2
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 import { format } from 'date-fns';
 import { VisitorTrends } from './VisitorTrends';
+import { PrivacyControls } from './PrivacyControls';
 
 // Types for our live data
 interface TimeSeriesData {
@@ -345,7 +345,6 @@ export function Dashboard() {
   const handleEpsilonChange = (newEpsilon: number) => {
     setEpsilon(newEpsilon);
     console.log(`🔒 Privacy epsilon updated to: ${newEpsilon}`);
-    localStorage.setItem('pythia_epsilon', newEpsilon.toString());
   };
 
   // Handle date range change
@@ -456,7 +455,7 @@ export function Dashboard() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* Privacy Notice with Test Buttons and Epsilon Control */}
+        {/* Privacy Notice with Test Buttons */}
         <div className="mb-8 p-4 bg-gradient-to-r from-sky-50 to-teal-50 border border-sky-200 rounded-xl">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
@@ -472,22 +471,6 @@ export function Dashboard() {
               </div>
             </div>
             <div className="flex items-center space-x-4">
-              {/* Epsilon Control */}
-              <div className="flex items-center space-x-2">
-                <Sliders className="w-4 h-4 text-purple-600" />
-                <label className="text-xs text-slate-600">ε:</label>
-                <input
-                  type="range"
-                  min="0.5"
-                  max="2.0"
-                  step="0.1"
-                  value={epsilon}
-                  onChange={(e) => handleEpsilonChange(parseFloat(e.target.value))}
-                  className="w-16 h-2 bg-purple-200 rounded-lg appearance-none cursor-pointer slider"
-                  title={`Privacy parameter: ${epsilon} (lower = more private)`}
-                />
-                <span className="text-xs text-purple-600 font-medium min-w-[2rem]">{epsilon}</span>
-              </div>
               <div className="flex items-center space-x-2">
                 <button
                   onClick={testAnalytics}
@@ -572,7 +555,7 @@ export function Dashboard() {
         </div>
 
         {/* Charts Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
           {/* Visitor Trends with Chart.js */}
           <div className="lg:col-span-2">
             <VisitorTrends
@@ -584,6 +567,17 @@ export function Dashboard() {
             />
           </div>
 
+          {/* Privacy Controls */}
+          <div>
+            <PrivacyControls
+              epsilon={epsilon}
+              onEpsilonChange={handleEpsilonChange}
+            />
+          </div>
+        </div>
+
+        {/* Secondary Charts */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
           {/* Real-time Activity */}
           <div className="bg-white rounded-xl border border-slate-200 p-6">
             <div className="flex items-center justify-between mb-6">
@@ -596,7 +590,7 @@ export function Dashboard() {
             {loading ? (
               <ChartLoading />
             ) : (
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={250}>
                 <AreaChart data={timeSeries.slice(-24)}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis 
@@ -625,38 +619,6 @@ export function Dashboard() {
               </ResponsiveContainer>
             )}
           </div>
-        </div>
-
-        {/* Secondary Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-          {/* Page Views Bar Chart */}
-          <div className="bg-white rounded-xl border border-slate-200 p-6">
-            <h3 className="text-lg font-semibold text-slate-900 mb-6">Daily Page Views</h3>
-            {loading ? (
-              <ChartLoading />
-            ) : (
-              <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={timeSeries.slice(-7)}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis 
-                    dataKey="hour" 
-                    stroke="#64748b" 
-                    fontSize={12}
-                  />
-                  <YAxis stroke="#64748b" fontSize={12} />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: 'white', 
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '8px'
-                    }}
-                    formatter={formatTooltipValue}
-                  />
-                  <Bar dataKey="pageviews" fill={BRAND_COLORS.secondary} radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
 
           {/* Device Breakdown */}
           <div className="bg-white rounded-xl border border-slate-200 p-6">
@@ -665,14 +627,14 @@ export function Dashboard() {
               <ChartLoading />
             ) : (
               <>
-                <ResponsiveContainer width="100%" height={250}>
+                <ResponsiveContainer width="100%" height={200}>
                   <PieChart>
                     <Pie
                       data={deviceData}
                       cx="50%"
                       cy="50%"
-                      innerRadius={60}
-                      outerRadius={90}
+                      innerRadius={50}
+                      outerRadius={80}
                       paddingAngle={5}
                       dataKey="value"
                     >
@@ -799,30 +761,6 @@ export function Dashboard() {
           </div>
         </div>
       </main>
-
-      {/* Custom CSS for slider */}
-      <style jsx>{`
-        .slider::-webkit-slider-thumb {
-          appearance: none;
-          height: 16px;
-          width: 16px;
-          border-radius: 50%;
-          background: #8B5CF6;
-          cursor: pointer;
-          border: 2px solid #ffffff;
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-        
-        .slider::-moz-range-thumb {
-          height: 16px;
-          width: 16px;
-          border-radius: 50%;
-          background: #8B5CF6;
-          cursor: pointer;
-          border: 2px solid #ffffff;
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-      `}</style>
     </div>
   );
 }
