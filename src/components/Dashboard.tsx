@@ -23,7 +23,8 @@ import {
   X,
   Loader2,
   Bell,
-  BellOff
+  BellOff,
+  ExternalLink
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 import { format } from 'date-fns';
@@ -612,6 +613,51 @@ export function Dashboard() {
               onEpsilonChange={handleEpsilonChange}
             />
           </div>
+        </div>
+
+        {/* Advanced Analytics Links */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <Link 
+            to="/dashboard/cohorts"
+            className="bg-slate-800 rounded-xl border border-slate-700 p-6 hover:shadow-lg transition-all hover:border-purple-500/50 group"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-purple-900/50 rounded-lg group-hover:bg-purple-800/50 transition-colors">
+                <Users className="w-5 h-5 text-purple-400" />
+              </div>
+              <ExternalLink className="w-4 h-4 text-slate-500 group-hover:text-purple-400 transition-colors" />
+            </div>
+            <h3 className="text-lg font-semibold text-slate-100 mb-2">Cohort Analysis</h3>
+            <p className="text-sm text-slate-400">30-day retention heatmap showing user return patterns by signup date</p>
+          </Link>
+
+          <Link 
+            to="/dashboard/sources"
+            className="bg-slate-800 rounded-xl border border-slate-700 p-6 hover:shadow-lg transition-all hover:border-teal-500/50 group"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-teal-900/50 rounded-lg group-hover:bg-teal-800/50 transition-colors">
+                <TrendingUp className="w-5 h-5 text-teal-400" />
+              </div>
+              <ExternalLink className="w-4 h-4 text-slate-500 group-hover:text-teal-400 transition-colors" />
+            </div>
+            <h3 className="text-lg font-semibold text-slate-100 mb-2">Source Trends</h3>
+            <p className="text-sm text-slate-400">Top 10 traffic sources with UTM parameter tracking and conversion data</p>
+          </Link>
+
+          <Link 
+            to="/dashboard/geography"
+            className="bg-slate-800 rounded-xl border border-slate-700 p-6 hover:shadow-lg transition-all hover:border-blue-500/50 group"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-blue-900/50 rounded-lg group-hover:bg-blue-800/50 transition-colors">
+                <Globe className="w-5 h-5 text-blue-400" />
+              </div>
+              <ExternalLink className="w-4 h-4 text-slate-500 group-hover:text-blue-400 transition-colors" />
+            </div>
+            <h3 className="text-lg font-semibold text-slate-100 mb-2">Geographic Heatmap</h3>
+            <p className="text-sm text-slate-400">World map visualization of visitor distribution by country</p>
+          </Link>
         </div>
 
         {/* Secondary Charts */}

@@ -9,8 +9,19 @@ export default defineConfig({
     port: 5173
   },
   optimizeDeps: {
-    include: ['@visx/heatmap', '@visx/scale', '@visx/responsive', '@visx/tooltip', 'react-simple-maps'],
+    include: ['react-simple-maps'],
     esbuildOptions: { target: 'es2019' },
     exclude: ['lucide-react'],
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom'],
+          'chart-vendor': ['recharts', 'react-chartjs-2', 'chart.js'],
+          'map-vendor': ['react-simple-maps']
+        }
+      }
+    }
+  }
 });

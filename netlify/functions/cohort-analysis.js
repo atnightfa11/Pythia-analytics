@@ -19,7 +19,7 @@ export const handler = async (event, context) => {
     
     // Check environment variables
     const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
-    const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
     
     if (!supabaseUrl || !supabaseKey) {
       console.error('❌ Missing Supabase credentials')
@@ -36,65 +36,65 @@ export const handler = async (event, context) => {
     // Create Supabase client
     const supabase = createClient(supabaseUrl, supabaseKey)
     
-    console.log('🔍 Executing cohort retention SQL query...')
+    // Get query parameters
+    const params = event.queryStringParameters || {}
+    const days = parseInt(params.days || '30')
     
-    // Execute the cohort retention analysis SQL
-    const { data: cohortData, error } = await supabase.rpc('cohort_retention_analysis')
+    console.log(`🔍 Executing cohort retention analysis for ${days} days...`)
     
-    if (error) {
-      console.error('❌ Error executing cohort query:', error)
+    // Try to use the SQL function first
+    try {
+      const { data: cohortData, error } = await supabase.rpc('cohort_retention_analysis')
       
-      // If the function doesn't exist, execute the raw SQL
-      console.log('🔄 Trying raw SQL query...')
-      
-      const { data: rawData, error: rawError } = await supabase
-        .from('pageviews')
-        .select(`
-          session_id,
-          timestamp,
-          DATE(timestamp) as date
-        `)
-        .order('timestamp', { ascending: true })
-      
-      if (rawError) {
-        console.error('❌ Raw query failed:', rawError)
+      if (!error && cohortData) {
+        console.log(`✅ Cohort analysis complete: ${cohortData.length} data points`)
         return {
-          statusCode: 500,
+          statusCode: 200,
           headers: { 'Access-Control-Allow-Origin': '*' },
-          body: JSON.stringify({ 
-            error: 'Failed to fetch pageview data',
-            details: rawError.message
+          body: JSON.stringify({
+            success: true,
+            data: cohortData,
+            processedBy: 'sql',
+            generatedAt: new Date().toISOString()
           })
         }
       }
-      
-      // Process data in JavaScript since SQL function might not exist
-      console.log('⚙️ Processing cohort data in JavaScript...')
-      
-      const cohortAnalysis = processCohortData(rawData)
-      
+    } catch (sqlError) {
+      console.warn('⚠️ SQL function failed, falling back to JavaScript processing:', sqlError)
+    }
+    
+    // Fallback to JavaScript processing
+    console.log('🔄 Processing cohort data with JavaScript...')
+    
+    const { data: rawData, error: rawError } = await supabase
+      .from('pageviews')
+      .select('session_id, timestamp')
+      .not('session_id', 'is', null)
+      .order('timestamp', { ascending: true })
+      .limit(5000) // Limit to prevent memory issues
+    
+    if (rawError) {
+      console.error('❌ Raw query failed:', rawError)
       return {
-        statusCode: 200,
+        statusCode: 500,
         headers: { 'Access-Control-Allow-Origin': '*' },
-        body: JSON.stringify({
-          success: true,
-          data: cohortAnalysis,
-          processedBy: 'javascript',
-          totalSessions: new Set(rawData.map(r => r.session_id)).size,
-          generatedAt: new Date().toISOString()
+        body: JSON.stringify({ 
+          error: 'Failed to fetch pageview data',
+          details: rawError.message
         })
       }
     }
-
-    console.log(`✅ Cohort analysis complete: ${cohortData?.length || 0} data points`)
-
+    
+    const cohortAnalysis = processCohortData(rawData, days)
+    
     return {
       statusCode: 200,
       headers: { 'Access-Control-Allow-Origin': '*' },
       body: JSON.stringify({
         success: true,
-        data: cohortData || [],
-        processedBy: 'sql',
+        data: cohortAnalysis,
+        processedBy: 'javascript',
+        totalSessions: new Set(rawData.map(r => r.session_id)).size,
         generatedAt: new Date().toISOString()
       })
     }
@@ -114,14 +114,15 @@ export const handler = async (event, context) => {
 }
 
 // JavaScript implementation of cohort analysis
-function processCohortData(pageviews) {
+function processCohortData(pageviews, maxDays = 30) {
   console.log('📊 Processing cohort data for', pageviews.length, 'pageviews')
   
   // Group by session to find first day (cohort day)
   const sessionFirstDay = {}
   pageviews.forEach(pv => {
-    if (!sessionFirstDay[pv.session_id] || pv.date < sessionFirstDay[pv.session_id]) {
-      sessionFirstDay[pv.session_id] = pv.date
+    const date = new Date(pv.timestamp).toISOString().split('T')[0]
+    if (!sessionFirstDay[pv.session_id] || date < sessionFirstDay[pv.session_id]) {
+      sessionFirstDay[pv.session_id] = date
     }
   })
   
@@ -135,11 +136,11 @@ function processCohortData(pageviews) {
     if (!cohortDay) return
     
     const cohortDate = new Date(cohortDay)
-    const visitDate = new Date(pv.date)
+    const visitDate = new Date(pv.timestamp)
     const dayOffset = Math.floor((visitDate - cohortDate) / (1000 * 60 * 60 * 24))
     
-    // Only include data for first 30 days
-    if (dayOffset < 0 || dayOffset > 30) return
+    // Only include data for specified days range
+    if (dayOffset < 0 || dayOffset > maxDays) return
     
     const key = `${cohortDay}_${dayOffset}`
     if (!retentionData[key]) {
