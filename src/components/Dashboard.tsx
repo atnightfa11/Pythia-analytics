@@ -29,12 +29,6 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { format } from 'date-fns';
 import { VisitorTrends } from './VisitorTrends';
 import { PrivacyControls } from './PrivacyControls';
-import { CohortHeatmap } from './CohortHeatmap';
-import { KPICards } from './KPICards';
-import { SourceBarChart } from './SourceBarChart';
-import { LocationsMap } from './LocationsMap';
-import { ConversionGoals } from './ConversionGoals';
-import { fetchKPIData, type KPIMetrics } from '../utils/kpiCalculations';
 
 // Types for our live data
 interface TimeSeriesData {
@@ -222,12 +216,10 @@ export function Dashboard() {
   const [forecast, setForecast] = useState<ForecastData | null>(null);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [dateRange, setDateRange] = useState<number>(28);
-  const [kpiData, setKpiData] = useState<KPIMetrics | null>(null);
 
   // Additional state for UI
   const [loading, setLoading] = useState(true);
   const [alertsLoading, setAlertsLoading] = useState(true);
-  const [kpiLoading, setKpiLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [isOnline, setIsOnline] = useState(true);
@@ -246,17 +238,6 @@ export function Dashboard() {
         setError(null);
 
         console.log('📊 Loading dashboard data...');
-
-        // Load KPI data
-        setKpiLoading(true);
-        try {
-          const kpiMetrics = await fetchKPIData(dateRange);
-          setKpiData(kpiMetrics);
-        } catch (kpiError) {
-          console.warn('⚠️ KPI fetch failed:', kpiError);
-        } finally {
-          setKpiLoading(false);
-        }
 
         // Historical & real-time events
         const eventsResponse = await fetch(`/.netlify/functions/get-events?days=${dateRange}`);
@@ -546,10 +527,70 @@ export function Dashboard() {
           </div>
         </div>
 
-        {/* KPI Cards */}
-        {kpiData && (
-          <KPICards data={kpiData} loading={kpiLoading} />
-        )}
+        {/* Key Metrics */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 hover:shadow-lg transition-shadow">
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-sky-900/50 rounded-lg">
+                <Users className="w-5 h-5 text-sky-400" />
+              </div>
+              <span className="flex items-center text-sm font-medium text-emerald-400">
+                <ArrowUp className="w-4 h-4 mr-1" />
+                12.3%
+              </span>
+            </div>
+            <h3 className="text-2xl font-bold text-slate-100 mb-1">
+              {totalVisitors.toLocaleString()}
+            </h3>
+            <p className="text-sm text-slate-400">Total Visitors ({dateRange}d)</p>
+          </div>
+
+          <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 hover:shadow-lg transition-shadow">
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-teal-900/50 rounded-lg">
+                <Globe className="w-5 h-5 text-teal-400" />
+              </div>
+              <span className="flex items-center text-sm font-medium text-emerald-400">
+                <ArrowUp className="w-4 h-4 mr-1" />
+                8.7%
+              </span>
+            </div>
+            <h3 className="text-2xl font-bold text-slate-100 mb-1">
+              {Math.floor(totalPageviews).toLocaleString()}
+            </h3>
+            <p className="text-sm text-slate-400">Page Views ({dateRange}d)</p>
+          </div>
+
+          <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 hover:shadow-lg transition-shadow">
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-purple-900/50 rounded-lg">
+                <Activity className="w-5 h-5 text-purple-400" />
+              </div>
+              <span className="flex items-center text-sm font-medium text-emerald-400">
+                <ArrowUp className="w-4 h-4 mr-1" />
+                15.2%
+              </span>
+            </div>
+            <h3 className="text-2xl font-bold text-slate-100 mb-1">
+              {totalEvents.toLocaleString()}
+            </h3>
+            <p className="text-sm text-slate-400">Events Tracked ({dateRange}d)</p>
+          </div>
+
+          <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 hover:shadow-lg transition-shadow">
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-orange-900/50 rounded-lg">
+                <Target className="w-5 h-5 text-orange-400" />
+              </div>
+              <span className="flex items-center text-sm font-medium text-emerald-400">
+                <ArrowUp className="w-4 h-4 mr-1" />
+                4.1%
+              </span>
+            </div>
+            <h3 className="text-2xl font-bold text-slate-100 mb-1">4.2%</h3>
+            <p className="text-sm text-slate-400">Conversion Rate</p>
+          </div>
+        </div>
 
         {/* Charts Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
@@ -573,16 +614,49 @@ export function Dashboard() {
           </div>
         </div>
 
-        {/* Cohort Retention Heatmap */}
-        <div className="mb-8">
-          <CohortHeatmap />
-        </div>
-
         {/* Secondary Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-          {/* Source Bar Chart */}
-          <div>
-            <SourceBarChart dateRange={dateRange} />
+          {/* Real-time Activity */}
+          <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-slate-100">Real-time Activity</h3>
+              <div className="flex items-center space-x-2 text-emerald-400">
+                <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+                <span className="text-sm font-medium">Live</span>
+              </div>
+            </div>
+            {loading ? (
+              <ChartLoading />
+            ) : (
+              <ResponsiveContainer width="100%" height={250}>
+                <AreaChart data={timeSeries.slice(-24)}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                  <XAxis 
+                    dataKey="hour" 
+                    stroke="#9ca3af" 
+                    fontSize={12}
+                  />
+                  <YAxis stroke="#9ca3af" fontSize={12} />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: '#1e293b', 
+                      border: '1px solid #475569',
+                      borderRadius: '8px',
+                      color: '#f1f5f9'
+                    }}
+                    formatter={formatTooltipValue}
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="count" 
+                    stroke={BRAND_COLORS.accent}
+                    fill={BRAND_COLORS.accent}
+                    fillOpacity={0.2}
+                    strokeWidth={2}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </div>
 
           {/* Device Breakdown */}
@@ -607,7 +681,15 @@ export function Dashboard() {
                         <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={formatTooltipValue} />
+                    <Tooltip 
+                      formatter={formatTooltipValue}
+                      contentStyle={{ 
+                        backgroundColor: '#1e293b', 
+                        border: '1px solid #475569',
+                        borderRadius: '8px',
+                        color: '#f1f5f9'
+                      }}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="mt-4 space-y-2">
@@ -669,16 +751,6 @@ export function Dashboard() {
               )}
             </section>
           </div>
-        </div>
-
-        {/* Conversion Goals */}
-        <div className="mb-8">
-          <ConversionGoals dateRange={dateRange} />
-        </div>
-
-        {/* Locations Map */}
-        <div className="mb-8">
-          <LocationsMap />
         </div>
 
         {/* Privacy Status */}
