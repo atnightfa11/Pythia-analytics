@@ -75,6 +75,31 @@ function extractUTMParams() {
   return utmParams
 }
 
+// Helper function to safely parse JSON response
+async function safeJsonParse(response) {
+  try {
+    const text = await response.text()
+    
+    // Check if response is empty
+    if (!text || text.trim() === '') {
+      console.warn('⚠️ Empty response received from server')
+      return { error: 'Empty response from server' }
+    }
+    
+    // Try to parse as JSON
+    try {
+      return JSON.parse(text)
+    } catch (parseError) {
+      console.error('❌ Failed to parse response as JSON:', parseError)
+      console.error('📄 Raw response text:', text)
+      return { error: 'Invalid JSON response', rawResponse: text }
+    }
+  } catch (textError) {
+    console.error('❌ Failed to read response text:', textError)
+    return { error: 'Failed to read response' }
+  }
+}
+
 // Initialize session on load
 const sessionId = getOrCreateSessionId()
 const deviceType = getDeviceType()
@@ -153,9 +178,9 @@ setInterval(async () => {
       body: JSON.stringify(noisy)
     })
     
-    const result = await response.json()
+    const result = await safeJsonParse(response)
     
-    if (response.ok) {
+    if (response.ok && !result.error) {
       console.log('✅ batch sent successfully:', result)
       if (result.inserted?.pageviews > 0) {
         console.log(`📄 ${result.inserted.pageviews} pageviews with UTM data processed`)
@@ -199,9 +224,9 @@ window.flushPythia = async () => {
       body: JSON.stringify(noisy)
     })
     
-    const result = await response.json()
+    const result = await safeJsonParse(response)
     
-    if (response.ok) {
+    if (response.ok && !result.error) {
       console.log('✅ manual flush successful:', result)
       if (result.inserted?.pageviews > 0) {
         console.log(`📄 ${result.inserted.pageviews} pageviews with UTM data processed`)
