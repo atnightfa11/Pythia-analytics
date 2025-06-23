@@ -184,7 +184,7 @@ window.addEventListener('popstate', () => {
   }
 })
 
-// Enhanced batch sending with better error handling and alerter trigger
+// Enhanced batch sending with better error handling and correct URL routing
 setInterval(async () => {
   if (!window.pythiaBuffer.length) return
   
@@ -197,10 +197,8 @@ setInterval(async () => {
   console.log('🧪 noisy batch', noisy)              // inspect noise
   
   try {
-    // Use the deployed site URL instead of localhost
-    const ingestUrl = window.location.hostname === 'localhost' 
-      ? '/.netlify/functions/ingest'
-      : 'https://getpythia.tech/.netlify/functions/ingest'
+    // Always use the correct deployed URL for the ingest function
+    const ingestUrl = '/.netlify/functions/ingest'
     
     const response = await fetch(ingestUrl, {
       method: 'POST',
@@ -247,10 +245,8 @@ window.flushPythia = async () => {
   }))
   
   try {
-    // Use the deployed site URL instead of localhost
-    const ingestUrl = window.location.hostname === 'localhost' 
-      ? '/.netlify/functions/ingest'
-      : 'https://getpythia.tech/.netlify/functions/ingest'
+    // Always use the correct deployed URL for the ingest function
+    const ingestUrl = '/.netlify/functions/ingest'
     
     const response = await fetch(ingestUrl, {
       method: 'POST',

@@ -16,7 +16,7 @@ interface LocationsMapProps {
 // World map topology URL
 const geoUrl = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
-// Country code mapping for common countries
+// Country code mapping for common countries (ISO 3166-1 alpha-3)
 const COUNTRY_CODES: Record<string, string> = {
   'United States': 'USA',
   'United Kingdom': 'GBR',
@@ -156,13 +156,13 @@ export function LocationsMap({ className = "" }: LocationsMapProps) {
     }).filter(country => country.countryCode); // Only include countries with valid codes
   };
 
-  // Create color scale with better contrast
-  const maxVisitors = Math.max(...data.map(d => d.visitors));
-  const minVisitors = Math.min(...data.map(d => d.visitors));
+  // Create color scale with better contrast and more visible colors
+  const maxVisitors = Math.max(...data.map(d => d.visitors), 1);
+  const minVisitors = Math.min(...data.map(d => d.visitors), 0);
   
   const colorScale = scaleLinear<string>({
-    range: ['#1e40af', '#3b82f6', '#60a5fa', '#93c5fd'], // Blue gradient
-    domain: [minVisitors, maxVisitors * 0.3, maxVisitors * 0.6, maxVisitors],
+    range: ['#1e40af', '#3b82f6', '#60a5fa', '#93c5fd'], // Blue gradient - more visible
+    domain: [0, maxVisitors * 0.3, maxVisitors * 0.6, maxVisitors],
   });
 
   // Get visitor count for a country
@@ -262,11 +262,14 @@ export function LocationsMap({ className = "" }: LocationsMapProps) {
                 const visitors = getCountryVisitors(countryCode);
                 const countryData = getCountryData(countryCode);
                 
+                // Ensure we have a visible color for countries with data
+                const fillColor = visitors > 0 ? colorScale(visitors) : '#374151';
+                
                 return (
                   <Geography
                     key={geo.rsmKey}
                     geography={geo}
-                    fill={visitors > 0 ? colorScale(visitors) : '#374151'}
+                    fill={fillColor}
                     stroke="#475569"
                     strokeWidth={0.5}
                     style={{
@@ -306,13 +309,15 @@ export function LocationsMap({ className = "" }: LocationsMapProps) {
         <div className="flex items-center space-x-4">
           <span className="text-xs text-slate-400">Fewer visitors</span>
           <div className="flex items-center space-x-1">
-            {[0, 0.3, 0.6, 1].map((value, index) => (
+            <div className="w-6 h-4 rounded bg-gray-600" title="No data" />
+            {[0.3, 0.6, 1].map((value, index) => (
               <div
                 key={value}
                 className="w-6 h-4 rounded"
                 style={{
-                  backgroundColor: value === 0 ? '#374151' : colorScale(minVisitors + (maxVisitors - minVisitors) * value)
+                  backgroundColor: colorScale(minVisitors + (maxVisitors - minVisitors) * value)
                 }}
+                title={`${Math.round(minVisitors + (maxVisitors - minVisitors) * value)} visitors`}
               />
             ))}
           </div>
