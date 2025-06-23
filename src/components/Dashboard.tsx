@@ -28,6 +28,10 @@ import { format } from 'date-fns';
 import { VisitorTrends } from './VisitorTrends';
 import { PrivacyControls } from './PrivacyControls';
 import { CohortHeatmap } from './CohortHeatmap';
+import { KPICards } from './KPICards';
+import { SourceBarChart } from './SourceBarChart';
+import { LocationsMap } from './LocationsMap';
+import { fetchKPIData, type KPIMetrics } from '../utils/kpiCalculations';
 
 // Types for our live data
 interface TimeSeriesData {
@@ -179,10 +183,12 @@ export function Dashboard() {
   const [forecast, setForecast] = useState<ForecastData | null>(null);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [dateRange, setDateRange] = useState<number>(28);
+  const [kpiData, setKpiData] = useState<KPIMetrics | null>(null);
 
   // Additional state for UI
   const [loading, setLoading] = useState(true);
   const [alertsLoading, setAlertsLoading] = useState(true);
+  const [kpiLoading, setKpiLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [isOnline, setIsOnline] = useState(true);
@@ -201,6 +207,17 @@ export function Dashboard() {
         setError(null);
 
         console.log('📊 Loading dashboard data...');
+
+        // Load KPI data
+        setKpiLoading(true);
+        try {
+          const kpiMetrics = await fetchKPIData(dateRange);
+          setKpiData(kpiMetrics);
+        } catch (kpiError) {
+          console.warn('⚠️ KPI fetch failed:', kpiError);
+        } finally {
+          setKpiLoading(false);
+        }
 
         // Historical & real-time events
         const eventsResponse = await fetch(`/.netlify/functions/get-events?days=${dateRange}`);
@@ -377,11 +394,11 @@ export function Dashboard() {
   // Loading state
   if (loading && timeSeries.length === 0) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 text-sky-600 animate-spin mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-slate-900 mb-2">Loading Dashboard</h2>
-          <p className="text-slate-600">Fetching your analytics data...</p>
+          <Loader2 className="w-8 h-8 text-sky-400 animate-spin mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-slate-100 mb-2">Loading Dashboard</h2>
+          <p className="text-slate-400">Fetching your analytics data...</p>
         </div>
       </div>
     );
@@ -390,11 +407,11 @@ export function Dashboard() {
   // Error state
   if (error && timeSeries.length === 0) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
         <div className="text-center max-w-md">
-          <AlertTriangle className="w-8 h-8 text-red-600 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-slate-900 mb-2">Failed to Load Data</h2>
-          <p className="text-slate-600 mb-4">{error}</p>
+          <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold text-slate-100 mb-2">Failed to Load Data</h2>
+          <p className="text-slate-400 mb-4">{error}</p>
           <button
             onClick={() => window.location.reload()}
             className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg transition-colors"
@@ -407,46 +424,46 @@ export function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-900">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 px-6 py-4">
+      <header className="bg-slate-800 border-b border-slate-700 px-6 py-4">
         <div className="flex items-center justify-between max-w-7xl mx-auto">
           <div className="flex items-center space-x-6">
             <Link to="/" className="flex items-center space-x-3">
               <div className="w-8 h-8 bg-gradient-to-br from-sky-400 to-blue-600 rounded-lg flex items-center justify-center">
                 <BarChart3 className="w-5 h-5 text-white" />
               </div>
-              <span className="text-xl font-bold text-slate-900">Pythia Analytics</span>
+              <span className="text-xl font-bold text-slate-100">Pythia Analytics</span>
             </Link>
             <nav className="hidden md:flex space-x-6">
-              <Link to="/dashboard" className="text-sky-600 font-medium">Dashboard</Link>
-              <Link to="/integration" className="text-slate-600 hover:text-slate-900">Integration</Link>
-              <Link to="/settings" className="text-slate-600 hover:text-slate-900">Settings</Link>
+              <Link to="/dashboard" className="text-sky-400 font-medium">Dashboard</Link>
+              <Link to="/integration" className="text-slate-400 hover:text-slate-100">Integration</Link>
+              <Link to="/settings" className="text-slate-400 hover:text-slate-100">Settings</Link>
             </nav>
           </div>
           <div className="flex items-center space-x-4">
             {/* Live Gauge */}
-            <div className="live-gauge flex items-center space-x-2 px-3 py-2 bg-emerald-50 rounded-lg">
+            <div className="live-gauge flex items-center space-x-2 px-3 py-2 bg-emerald-900/50 rounded-lg">
               {isOnline ? (
-                <Wifi className="w-4 h-4 text-emerald-600" />
+                <Wifi className="w-4 h-4 text-emerald-400" />
               ) : (
-                <WifiOff className="w-4 h-4 text-red-600" />
+                <WifiOff className="w-4 h-4 text-red-400" />
               )}
-              <span className="text-sm font-medium text-emerald-700">
+              <span className="text-sm font-medium text-emerald-300">
                 Live Now: {liveCount}
               </span>
             </div>
             <button
               onClick={() => window.location.reload()}
               disabled={loading}
-              className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
+              className="p-2 text-slate-400 hover:text-slate-100 hover:bg-slate-700 rounded-lg transition-colors disabled:opacity-50"
               title="Refresh data"
             >
               <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
             </button>
             <Link
               to="/settings"
-              className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+              className="p-2 text-slate-400 hover:text-slate-100 hover:bg-slate-700 rounded-lg transition-colors"
             >
               <SettingsIcon className="w-5 h-5" />
             </Link>
@@ -457,13 +474,13 @@ export function Dashboard() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-8">
         {/* Privacy Notice with Test Buttons */}
-        <div className="mb-8 p-4 bg-gradient-to-r from-sky-50 to-teal-50 border border-sky-200 rounded-xl">
+        <div className="mb-8 p-4 bg-gradient-to-r from-slate-800 to-slate-700 border border-slate-600 rounded-xl">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <Shield className="w-5 h-5 text-sky-600" />
+              <Shield className="w-5 h-5 text-sky-400" />
               <div>
-                <p className="text-sm font-medium text-sky-900">Privacy-First Analytics Active</p>
-                <p className="text-xs text-sky-600">
+                <p className="text-sm font-medium text-slate-100">Privacy-First Analytics Active</p>
+                <p className="text-xs text-slate-400">
                   Session tracking • Device detection • Differential privacy (ε = {epsilon}) • No cookies
                   {lastUpdated && (
                     <span className="ml-2">• Last updated: {lastUpdated.toLocaleTimeString('en-US', { hour12: false })}</span>
@@ -490,70 +507,10 @@ export function Dashboard() {
           </div>
         </div>
 
-        {/* Key Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-xl border border-slate-200 p-6 hover:shadow-lg transition-shadow">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-sky-100 rounded-lg">
-                <Users className="w-5 h-5 text-sky-600" />
-              </div>
-              <span className="flex items-center text-sm font-medium text-emerald-600">
-                <ArrowUp className="w-4 h-4 mr-1" />
-                12.3%
-              </span>
-            </div>
-            <h3 className="text-2xl font-bold text-slate-900 mb-1">
-              {totalVisitors.toLocaleString()}
-            </h3>
-            <p className="text-sm text-slate-600">Total Visitors ({dateRange}d)</p>
-          </div>
-
-          <div className="bg-white rounded-xl border border-slate-200 p-6 hover:shadow-lg transition-shadow">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-teal-100 rounded-lg">
-                <Globe className="w-5 h-5 text-teal-600" />
-              </div>
-              <span className="flex items-center text-sm font-medium text-emerald-600">
-                <ArrowUp className="w-4 h-4 mr-1" />
-                8.7%
-              </span>
-            </div>
-            <h3 className="text-2xl font-bold text-slate-900 mb-1">
-              {Math.floor(totalPageviews).toLocaleString()}
-            </h3>
-            <p className="text-sm text-slate-600">Page Views ({dateRange}d)</p>
-          </div>
-
-          <div className="bg-white rounded-xl border border-slate-200 p-6 hover:shadow-lg transition-shadow">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <Activity className="w-5 h-5 text-purple-600" />
-              </div>
-              <span className="flex items-center text-sm font-medium text-emerald-600">
-                <ArrowUp className="w-4 h-4 mr-1" />
-                15.2%
-              </span>
-            </div>
-            <h3 className="text-2xl font-bold text-slate-900 mb-1">
-              {totalEvents.toLocaleString()}
-            </h3>
-            <p className="text-sm text-slate-600">Events Tracked ({dateRange}d)</p>
-          </div>
-
-          <div className="bg-white rounded-xl border border-slate-200 p-6 hover:shadow-lg transition-shadow">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-orange-100 rounded-lg">
-                <Target className="w-5 h-5 text-orange-600" />
-              </div>
-              <span className="flex items-center text-sm font-medium text-emerald-600">
-                <ArrowUp className="w-4 h-4 mr-1" />
-                4.1%
-              </span>
-            </div>
-            <h3 className="text-2xl font-bold text-slate-900 mb-1">4.2%</h3>
-            <p className="text-sm text-slate-600">Conversion Rate</p>
-          </div>
-        </div>
+        {/* KPI Cards */}
+        {kpiData && (
+          <KPICards data={kpiData} loading={kpiLoading} />
+        )}
 
         {/* Charts Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
@@ -584,51 +541,14 @@ export function Dashboard() {
 
         {/* Secondary Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-          {/* Real-time Activity */}
-          <div className="bg-white rounded-xl border border-slate-200 p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-semibold text-slate-900">Real-time Activity</h3>
-              <div className="flex items-center space-x-2 text-emerald-600">
-                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                <span className="text-sm font-medium">Live</span>
-              </div>
-            </div>
-            {loading ? (
-              <ChartLoading />
-            ) : (
-              <ResponsiveContainer width="100%" height={250}>
-                <AreaChart data={timeSeries.slice(-24)}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis 
-                    dataKey="hour" 
-                    stroke="#64748b" 
-                    fontSize={12}
-                  />
-                  <YAxis stroke="#64748b" fontSize={12} />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: 'white', 
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '8px'
-                    }}
-                    formatter={formatTooltipValue}
-                  />
-                  <Area 
-                    type="monotone" 
-                    dataKey="count" 
-                    stroke={BRAND_COLORS.accent}
-                    fill={BRAND_COLORS.accent}
-                    fillOpacity={0.2}
-                    strokeWidth={2}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
+          {/* Source Bar Chart */}
+          <div>
+            <SourceBarChart dateRange={dateRange} />
           </div>
 
           {/* Device Breakdown */}
-          <div className="bg-white rounded-xl border border-slate-200 p-6">
-            <h3 className="text-lg font-semibold text-slate-900 mb-6">Device Breakdown</h3>
+          <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
+            <h3 className="text-lg font-semibold text-slate-100 mb-6">Device Breakdown</h3>
             {loading ? (
               <ChartLoading />
             ) : (
@@ -656,9 +576,9 @@ export function Dashboard() {
                     <div key={index} className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">
                         <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
-                        <span className="text-sm text-slate-600">{item.name}</span>
+                        <span className="text-sm text-slate-400">{item.name}</span>
                       </div>
-                      <span className="text-sm font-medium text-slate-900">{item.value}%</span>
+                      <span className="text-sm font-medium text-slate-100">{item.value}%</span>
                     </div>
                   ))}
                 </div>
@@ -667,12 +587,12 @@ export function Dashboard() {
           </div>
 
           {/* Smart Alerts Panel */}
-          <div className="bg-white rounded-xl border border-slate-200 p-6">
+          <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-semibold text-slate-900">Smart Alerts</h3>
+              <h3 className="text-lg font-semibold text-slate-100">Smart Alerts</h3>
               <div className="flex items-center space-x-2">
                 <Zap className="w-5 h-5 text-amber-500" />
-                <span className="text-xs text-slate-600">
+                <span className="text-xs text-slate-400">
                   {alerts.filter(a => !a.acknowledged).length} unread
                 </span>
               </div>
@@ -681,7 +601,7 @@ export function Dashboard() {
               {alertsLoading ? (
                 // Loading skeletons for alerts
                 Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="p-4 border border-slate-200 rounded-lg">
+                  <div key={i} className="p-4 border border-slate-600 rounded-lg">
                     <div className="flex items-start justify-between">
                       <div className="flex items-center space-x-3 flex-1">
                         <LoadingSkeleton className="w-5 h-5 rounded" />
@@ -704,7 +624,7 @@ export function Dashboard() {
                   />
                 ))
               ) : (
-                <p className="text-sm text-slate-600 p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                <p className="text-sm text-slate-400 p-4 bg-slate-700/50 border border-slate-600 rounded-lg">
                   No alerts in the past 24 h 👍
                 </p>
               )}
@@ -712,54 +632,59 @@ export function Dashboard() {
           </div>
         </div>
 
+        {/* Locations Map */}
+        <div className="mb-8">
+          <LocationsMap />
+        </div>
+
         {/* Privacy Status */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
+        <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold text-slate-900">Privacy & Performance Status</h3>
-            <div className="flex items-center space-x-2 text-emerald-600">
+            <h3 className="text-lg font-semibold text-slate-100">Privacy & Performance Status</h3>
+            <div className="flex items-center space-x-2 text-emerald-400">
               <Shield className="w-5 h-5" />
               <span className="text-sm font-medium">All Systems Secure</span>
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div className="flex items-center space-x-4">
-              <div className="p-3 bg-emerald-100 rounded-lg">
-                <Layers className="w-6 h-6 text-emerald-600" />
+              <div className="p-3 bg-emerald-900/50 rounded-lg">
+                <Layers className="w-6 h-6 text-emerald-400" />
               </div>
               <div>
-                <p className="text-sm font-medium text-slate-900">Differential Privacy</p>
-                <p className="text-xs text-slate-600">ε = {epsilon} (Configurable privacy-utility balance)</p>
+                <p className="text-sm font-medium text-slate-100">Differential Privacy</p>
+                <p className="text-xs text-slate-400">ε = {epsilon} (Configurable privacy-utility balance)</p>
               </div>
             </div>
             <div className="flex items-center space-x-4">
-              <div className="p-3 bg-sky-100 rounded-lg">
-                <Database className="w-6 h-6 text-sky-600" />
+              <div className="p-3 bg-sky-900/50 rounded-lg">
+                <Database className="w-6 h-6 text-sky-400" />
               </div>
               <div>
-                <p className="text-sm font-medium text-slate-900">Session Tracking</p>
-                <p className="text-xs text-slate-600">
+                <p className="text-sm font-medium text-slate-100">Session Tracking</p>
+                <p className="text-xs text-slate-400">
                   {timeSeries.length} data points tracked
                 </p>
               </div>
             </div>
             <div className="flex items-center space-x-4">
-              <div className="p-3 bg-purple-100 rounded-lg">
-                <Activity className="w-6 h-6 text-purple-600" />
+              <div className="p-3 bg-purple-900/50 rounded-lg">
+                <Activity className="w-6 h-6 text-purple-400" />
               </div>
               <div>
-                <p className="text-sm font-medium text-slate-900">Prophet Forecasting</p>
-                <p className="text-xs text-slate-600">
+                <p className="text-sm font-medium text-slate-100">Prophet Forecasting</p>
+                <p className="text-xs text-slate-400">
                   {forecast ? `${(100 - forecast.mape).toFixed(0)}% accuracy` : 'Generating...'}
                 </p>
               </div>
             </div>
             <div className="flex items-center space-x-4">
-              <div className="p-3 bg-orange-100 rounded-lg">
-                <Clock className="w-6 h-6 text-orange-600" />
+              <div className="p-3 bg-orange-900/50 rounded-lg">
+                <Clock className="w-6 h-6 text-orange-400" />
               </div>
               <div>
-                <p className="text-sm font-medium text-slate-900">Data Processing</p>
-                <p className="text-xs text-slate-600">
+                <p className="text-sm font-medium text-slate-100">Data Processing</p>
+                <p className="text-xs text-slate-400">
                   {totalEvents.toLocaleString()} events processed
                 </p>
               </div>
