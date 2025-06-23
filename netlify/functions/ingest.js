@@ -226,7 +226,7 @@ export const handler = async (event, context) => {
       }
     }
 
-    // Trigger alerter function after successful insertion
+    // Trigger alerter function after successful insertion (non-blocking)
     try {
       console.log('🚨 Triggering alerter function...')
       // Use the configured site URL
@@ -234,13 +234,18 @@ export const handler = async (event, context) => {
       const alerterUrl = `${baseUrl}/.netlify/functions/alerter`
       console.log('📍 Alerter URL:', alerterUrl)
       
-      const alerterResponse = await fetch(alerterUrl)
+      // Remove await to make this non-blocking
+      fetch(alerterUrl).then(alerterResponse => {
+        if (alerterResponse.ok) {
+          console.log('✅ Alerter triggered successfully')
+        } else {
+          console.warn('⚠️ Alerter returned non-200 status:', alerterResponse.status)
+        }
+      }).catch(alerterError => {
+        console.error('❌ Failed to trigger alerter:', alerterError)
+      })
       
-      if (alerterResponse.ok) {
-        console.log('✅ Alerter triggered successfully')
-      } else {
-        console.warn('⚠️ Alerter returned non-200 status:', alerterResponse.status)
-      }
+      console.log('🚀 Alerter call initiated (non-blocking)')
     } catch (alerterError) {
       console.error('❌ Failed to trigger alerter:', alerterError)
       // Don't fail the main request if alerter fails
