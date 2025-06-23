@@ -75,28 +75,52 @@ function extractUTMParams() {
   return utmParams
 }
 
-// Helper function to safely parse JSON response
+// Enhanced helper function to safely parse JSON response with better error diagnostics
 async function safeJsonParse(response) {
   try {
     const text = await response.text()
     
-    // Check if response is empty
+    // Enhanced error reporting for empty responses
     if (!text || text.trim() === '') {
-      console.warn('⚠️ Empty response received from server')
-      return { error: 'Empty response from server' }
+      const errorDetails = {
+        error: 'Empty response from server',
+        status: response.status,
+        statusText: response.statusText,
+        url: response.url,
+        headers: Object.fromEntries(response.headers.entries()),
+        timestamp: new Date().toISOString()
+      }
+      console.warn('⚠️ Empty response received from server:', errorDetails)
+      return errorDetails
     }
     
     // Try to parse as JSON
     try {
       return JSON.parse(text)
     } catch (parseError) {
-      console.error('❌ Failed to parse response as JSON:', parseError)
-      console.error('📄 Raw response text:', text)
-      return { error: 'Invalid JSON response', rawResponse: text }
+      const errorDetails = {
+        error: 'Invalid JSON response',
+        parseError: parseError.message,
+        status: response.status,
+        statusText: response.statusText,
+        url: response.url,
+        rawResponse: text.substring(0, 500), // Limit raw response to first 500 chars
+        timestamp: new Date().toISOString()
+      }
+      console.error('❌ Failed to parse response as JSON:', errorDetails)
+      return errorDetails
     }
   } catch (textError) {
-    console.error('❌ Failed to read response text:', textError)
-    return { error: 'Failed to read response' }
+    const errorDetails = {
+      error: 'Failed to read response',
+      textError: textError.message,
+      status: response.status,
+      statusText: response.statusText,
+      url: response.url,
+      timestamp: new Date().toISOString()
+    }
+    console.error('❌ Failed to read response text:', errorDetails)
+    return errorDetails
   }
 }
 
@@ -160,7 +184,7 @@ window.addEventListener('popstate', () => {
   }
 })
 
-// Enhanced batch sending with alerter trigger
+// Enhanced batch sending with better error handling and alerter trigger
 setInterval(async () => {
   if (!window.pythiaBuffer.length) return
   
@@ -181,11 +205,15 @@ setInterval(async () => {
     
     const result = await safeJsonParse(response)
     
+    // Check for successful response (200-299 status codes) and no error in result
     if (response.ok && !result.error) {
       console.log('✅ batch sent successfully:', result)
       if (result.inserted?.pageviews > 0) {
         console.log(`📄 ${result.inserted.pageviews} pageviews with UTM data processed`)
       }
+      
+      // Clear buffer only on successful processing
+      window.pythiaBuffer.length = 0
       
       // Wait a moment for data to be processed, then trigger alerter
       setTimeout(async () => {
@@ -215,28 +243,22 @@ setInterval(async () => {
       
     } else {
       console.error('❌ server error:', result)
+      // Don't clear buffer on error - events will be retried in next interval
     }
   } catch (error) {
     console.error('❌ failed to send batch:', error)
-    // Re-add events to buffer on failure
-    window.pythiaBuffer.unshift(...noisy.map(evt => ({
-      ...evt,
-      count: evt.count - (Math.random() * 2 - 1) // remove noise for retry
-    })))
+    // Don't clear buffer on network error - events will be retried in next interval
   }
-  
-  window.pythiaBuffer.length = 0
 }, 60_000)
 
-// Enhanced manual flush with alerter trigger
+// Enhanced manual flush with better error handling and alerter trigger
 window.flushPythia = async () => {
   const evts = window.pythiaBuffer.slice()
-  window.pythiaBuffer.length = 0
   console.log('⚡️ manual flush', evts)
   
   if (evts.length === 0) {
     console.log('📭 no events to flush')
-    return []
+    return { message: 'No events to flush' }
   }
   
   // add Laplace noise ε=1
@@ -254,11 +276,15 @@ window.flushPythia = async () => {
     
     const result = await safeJsonParse(response)
     
+    // Check for successful response and no error in result
     if (response.ok && !result.error) {
       console.log('✅ manual flush successful:', result)
       if (result.inserted?.pageviews > 0) {
         console.log(`📄 ${result.inserted.pageviews} pageviews with UTM data processed`)
       }
+      
+      // Clear buffer only on successful processing
+      window.pythiaBuffer.length = 0
       
       // Trigger alerter after manual flush
       setTimeout(async () => {
@@ -286,15 +312,13 @@ window.flushPythia = async () => {
         }
       }, 1000) // Wait 1 second for data to be processed
       
+      return result
     } else {
       console.error('❌ manual flush failed:', result)
+      return result
     }
-    
-    return result
   } catch (error) {
     console.error('❌ manual flush error:', error)
-    // Re-add events to buffer on failure
-    window.pythiaBuffer.unshift(...evts)
     return { error: error.message }
   }
 }
