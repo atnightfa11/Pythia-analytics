@@ -94,8 +94,42 @@ export const handler = async (event, context) => {
 
     console.log(`📊 Processing batch of ${batch.length} events`)
 
-    // Enhanced event processing with geographic data simulation
-    const eventsToInsert = batch.map((evt, index) => {
+    // Helper function to extract UTM parameters from URL or query object
+    const extractUTMParams = (evt) => {
+      const utmParams = {}
+      
+      // Check if event has URL with UTM parameters
+      if (evt.url) {
+        try {
+          const url = new URL(evt.url, 'https://example.com') // Base URL for relative URLs
+          const searchParams = url.searchParams
+          
+          // Extract UTM parameters
+          if (searchParams.get('utm_source')) utmParams.utm_source = searchParams.get('utm_source')
+          if (searchParams.get('utm_medium')) utmParams.utm_medium = searchParams.get('utm_medium')
+          if (searchParams.get('utm_campaign')) utmParams.utm_campaign = searchParams.get('utm_campaign')
+          if (searchParams.get('utm_term')) utmParams.utm_term = searchParams.get('utm_term')
+          if (searchParams.get('utm_content')) utmParams.utm_content = searchParams.get('utm_content')
+        } catch (urlError) {
+          console.warn('⚠️ Failed to parse URL for UTM params:', evt.url, urlError.message)
+        }
+      }
+      
+      // Check if event has direct UTM parameters
+      if (evt.utm_source) utmParams.utm_source = evt.utm_source
+      if (evt.utm_medium) utmParams.utm_medium = evt.utm_medium
+      if (evt.utm_campaign) utmParams.utm_campaign = evt.utm_campaign
+      if (evt.utm_term) utmParams.utm_term = evt.utm_term
+      if (evt.utm_content) utmParams.utm_content = evt.utm_content
+      
+      return Object.keys(utmParams).length > 0 ? utmParams : null
+    }
+
+    // Enhanced event processing with UTM tracking
+    const eventsToInsert = []
+    const pageviewsToInsert = []
+    
+    batch.forEach((evt, index) => {
       const processed = {
         event_type: String(evt.event_type || 'unknown'),
         count: Math.max(1, Math.round(Number(evt.count) || 1)), // Ensure positive integer
@@ -104,9 +138,29 @@ export const handler = async (event, context) => {
         device: evt.device || null
       }
       
+      // Only add valid events
+      if (processed.event_type !== 'unknown') {
+        eventsToInsert.push(processed)
+        
+        // Check if this is a pageview event with UTM parameters
+        const utmParams = extractUTMParams(evt)
+        if (evt.event_type === 'pageview' || utmParams) {
+          const pageviewData = {
+            url: evt.url || evt.page || '/',
+            source: utmParams || {},
+            session_id: evt.session_id || null,
+            device: evt.device || null,
+            referrer: evt.referrer || null,
+            timestamp: evt.timestamp || new Date().toISOString()
+          }
+          
+          pageviewsToInsert.push(pageviewData)
+          console.log(`📄 Pageview with UTM data:`, pageviewData)
+        }
+      }
+      
       console.log(`📝 Processed event ${index + 1}:`, processed)
-      return processed
-    }).filter(evt => evt.event_type !== 'unknown') // Remove invalid events
+    })
 
     if (eventsToInsert.length === 0) {
       console.log('⚠️ No valid events to insert')
@@ -127,18 +181,13 @@ export const handler = async (event, context) => {
     console.log('🔑 Using anon key for insertion (should work with RLS policy)')
     
     // Insert events into Supabase using anon role
-    const { data, error } = await supabase
+    const { data: eventsData, error: eventsError } = await supabase
       .from('events')
       .insert(eventsToInsert)
       .select()
 
-    if (error) {
-      console.error('❌ Supabase insertion error:', error)
-      console.error('  Error code:', error.code)
-      console.error('  Error message:', error.message)
-      console.error('  Error details:', error.details)
-      console.error('  Error hint:', error.hint)
-      
+    if (eventsError) {
+      console.error('❌ Supabase events insertion error:', eventsError)
       return {
         statusCode: 500,
         headers: {
@@ -147,17 +196,35 @@ export const handler = async (event, context) => {
         },
         body: JSON.stringify({ 
           error: 'Database insertion failed', 
-          details: error.message,
-          code: error.code,
-          hint: error.hint,
+          details: eventsError.message,
+          code: eventsError.code,
+          hint: eventsError.hint,
           eventsAttempted: eventsToInsert,
-          suggestion: error.code === '42501' ? 'RLS policy may need to be updated to allow anonymous inserts' : 'Check database configuration'
+          suggestion: eventsError.code === '42501' ? 'RLS policy may need to be updated to allow anonymous inserts' : 'Check database configuration'
         }),
       }
     }
 
     console.log(`✅ Successfully inserted ${eventsToInsert.length} events`)
-    console.log('📊 Inserted data:', data)
+
+    // Insert pageviews if any
+    let pageviewsData = null
+    if (pageviewsToInsert.length > 0) {
+      console.log(`📄 Inserting ${pageviewsToInsert.length} pageviews with UTM data...`)
+      
+      const { data: pagesData, error: pagesError } = await supabase
+        .from('pageviews')
+        .insert(pageviewsToInsert)
+        .select()
+
+      if (pagesError) {
+        console.error('❌ Supabase pageviews insertion error:', pagesError)
+        // Don't fail the whole request if pageviews fail
+      } else {
+        pageviewsData = pagesData
+        console.log(`✅ Successfully inserted ${pageviewsToInsert.length} pageviews`)
+      }
+    }
 
     // Trigger alerter function after successful insertion
     try {
@@ -187,9 +254,15 @@ export const handler = async (event, context) => {
       },
       body: JSON.stringify({ 
         success: true, 
-        inserted: eventsToInsert.length,
-        message: 'Events processed successfully',
-        data: data
+        inserted: {
+          events: eventsToInsert.length,
+          pageviews: pageviewsToInsert.length
+        },
+        message: 'Events and pageviews processed successfully',
+        data: {
+          events: eventsData,
+          pageviews: pageviewsData
+        }
       }),
     }
 

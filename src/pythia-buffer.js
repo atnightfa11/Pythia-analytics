@@ -1,4 +1,4 @@
-// pythia-buffer.js - Enhanced with session tracking and device detection
+// pythia-buffer.js - Enhanced with session tracking, device detection, and UTM parameter capture
 window.pythiaBuffer = []
 
 // Session management
@@ -14,7 +14,9 @@ function getOrCreateSessionId() {
       count: 1,
       timestamp: new Date().toISOString(),
       session_id: sessionId,
-      device: getDeviceType()
+      device: getDeviceType(),
+      url: window.location.href,
+      ...extractUTMParams()
     })
     
     console.log('🆔 New session created:', sessionId)
@@ -40,12 +42,98 @@ function getDeviceType() {
   return 'Desktop'
 }
 
+// UTM parameter extraction
+function extractUTMParams() {
+  const urlParams = new URLSearchParams(window.location.search)
+  const utmParams = {}
+  
+  // Extract all UTM parameters
+  if (urlParams.get('utm_source')) utmParams.utm_source = urlParams.get('utm_source')
+  if (urlParams.get('utm_medium')) utmParams.utm_medium = urlParams.get('utm_medium')
+  if (urlParams.get('utm_campaign')) utmParams.utm_campaign = urlParams.get('utm_campaign')
+  if (urlParams.get('utm_term')) utmParams.utm_term = urlParams.get('utm_term')
+  if (urlParams.get('utm_content')) utmParams.utm_content = urlParams.get('utm_content')
+  
+  // Store UTM params in session storage for persistence across pages
+  if (Object.keys(utmParams).length > 0) {
+    sessionStorage.setItem('pythia_utm_params', JSON.stringify(utmParams))
+    console.log('🎯 UTM parameters detected:', utmParams)
+  } else {
+    // Try to get stored UTM params from session
+    const storedUTM = sessionStorage.getItem('pythia_utm_params')
+    if (storedUTM) {
+      try {
+        const parsedUTM = JSON.parse(storedUTM)
+        Object.assign(utmParams, parsedUTM)
+        console.log('🎯 Using stored UTM parameters:', utmParams)
+      } catch (e) {
+        console.warn('⚠️ Failed to parse stored UTM params:', e)
+      }
+    }
+  }
+  
+  return utmParams
+}
+
 // Initialize session on load
 const sessionId = getOrCreateSessionId()
 const deviceType = getDeviceType()
+const utmParams = extractUTMParams()
 
 console.log('📱 Device detected:', deviceType)
 console.log('🆔 Session ID:', sessionId)
+if (Object.keys(utmParams).length > 0) {
+  console.log('🎯 UTM tracking active:', utmParams)
+}
+
+// Auto-track pageviews with UTM data
+function trackPageview() {
+  const pageviewEvent = {
+    event_type: 'pageview',
+    count: 1,
+    timestamp: new Date().toISOString(),
+    session_id: sessionId,
+    device: deviceType,
+    url: window.location.href,
+    page: window.location.pathname,
+    referrer: document.referrer || null,
+    ...utmParams
+  }
+  
+  window.pythiaBuffer.push(pageviewEvent)
+  console.log('📄 Pageview tracked with UTM data:', pageviewEvent)
+}
+
+// Track initial pageview
+trackPageview()
+
+// Track pageviews on navigation (for SPAs)
+let currentPath = window.location.pathname
+const originalPushState = history.pushState
+const originalReplaceState = history.replaceState
+
+history.pushState = function(...args) {
+  originalPushState.apply(history, args)
+  if (window.location.pathname !== currentPath) {
+    currentPath = window.location.pathname
+    setTimeout(trackPageview, 100) // Small delay to ensure DOM is updated
+  }
+}
+
+history.replaceState = function(...args) {
+  originalReplaceState.apply(history, args)
+  if (window.location.pathname !== currentPath) {
+    currentPath = window.location.pathname
+    setTimeout(trackPageview, 100)
+  }
+}
+
+window.addEventListener('popstate', () => {
+  if (window.location.pathname !== currentPath) {
+    currentPath = window.location.pathname
+    setTimeout(trackPageview, 100)
+  }
+})
 
 setInterval(async () => {
   if (!window.pythiaBuffer.length) return
@@ -69,6 +157,9 @@ setInterval(async () => {
     
     if (response.ok) {
       console.log('✅ batch sent successfully:', result)
+      if (result.inserted?.pageviews > 0) {
+        console.log(`📄 ${result.inserted.pageviews} pageviews with UTM data processed`)
+      }
     } else {
       console.error('❌ server error:', result)
     }
@@ -112,6 +203,9 @@ window.flushPythia = async () => {
     
     if (response.ok) {
       console.log('✅ manual flush successful:', result)
+      if (result.inserted?.pageviews > 0) {
+        console.log(`📄 ${result.inserted.pageviews} pageviews with UTM data processed`)
+      }
     } else {
       console.error('❌ manual flush failed:', result)
     }
@@ -125,7 +219,7 @@ window.flushPythia = async () => {
   }
 }
 
-// Enhanced helper to add events to buffer with session and device data
+// Enhanced helper to add events to buffer with session, device, and UTM data
 window.pythia = (eventType, count = 1, data = {}) => {
   const event = {
     event_type: eventType,
@@ -133,6 +227,10 @@ window.pythia = (eventType, count = 1, data = {}) => {
     timestamp: new Date().toISOString(),
     session_id: sessionId,
     device: deviceType,
+    url: window.location.href,
+    page: window.location.pathname,
+    referrer: document.referrer || null,
+    ...utmParams,
     ...data
   }
   
@@ -148,6 +246,7 @@ window.pythiaStatus = () => {
   console.log('🔍 Pythia Status:')
   console.log('  Session ID:', sessionId)
   console.log('  Device Type:', deviceType)
+  console.log('  UTM Params:', utmParams)
   console.log('  Buffer size:', window.pythiaBuffer.length)
   console.log('  Buffer contents:', window.pythiaBuffer)
   console.log('  Functions available:', {
@@ -158,6 +257,7 @@ window.pythiaStatus = () => {
   return {
     sessionId,
     deviceType,
+    utmParams,
     bufferSize: window.pythiaBuffer.length,
     buffer: window.pythiaBuffer,
     functions: {
@@ -168,7 +268,8 @@ window.pythiaStatus = () => {
   }
 }
 
-console.log('🔧 Pythia buffer initialized - privacy-first analytics active')
+console.log('🔧 Pythia buffer initialized - privacy-first analytics with UTM tracking active')
 console.log('🆔 Session tracking enabled with device detection')
+console.log('🎯 UTM parameter tracking enabled')
 console.log('💡 Try: pythia("test_event", 1) then flushPythia()')
 console.log('🔍 Debug with: pythiaStatus()')
