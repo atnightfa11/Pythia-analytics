@@ -30,9 +30,9 @@ export const handler = async (event, context) => {
     console.log('📥 Ingest function called')
     console.log('📋 Request body:', event.body)
     
-    // Check for required environment variables
-    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
-    const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
+    // Check for required environment variables with more fallback options
+    const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
+    const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY
 
     console.log('🔍 Environment variables check:')
     console.log('  SUPABASE_URL:', supabaseUrl ? '✅ Present' : '❌ Missing')
@@ -49,7 +49,13 @@ export const handler = async (event, context) => {
         },
         body: JSON.stringify({ 
           error: 'Server configuration error',
-          details: 'Supabase credentials not configured'
+          details: 'Supabase credentials not configured',
+          env_check: {
+            VITE_SUPABASE_URL: !!process.env.VITE_SUPABASE_URL,
+            SUPABASE_URL: !!process.env.SUPABASE_URL,
+            VITE_SUPABASE_ANON_KEY: !!process.env.VITE_SUPABASE_ANON_KEY,
+            SUPABASE_ANON_KEY: !!process.env.SUPABASE_ANON_KEY
+          }
         }),
       }
     }
@@ -251,7 +257,7 @@ export const handler = async (event, context) => {
       // Don't fail the main request if alerter fails
     }
 
-    return {
+    const response = {
       statusCode: 200,
       headers: {
         'Access-Control-Allow-Origin': '*',
@@ -271,11 +277,14 @@ export const handler = async (event, context) => {
       }),
     }
 
+    console.log('📤 Returning response:', response)
+    return response
+
   } catch (error) {
     console.error('❌ Function error:', error)
     console.error('  Error stack:', error.stack)
     
-    return {
+    const errorResponse = {
       statusCode: 500,
       headers: {
         'Access-Control-Allow-Origin': '*',
@@ -284,8 +293,11 @@ export const handler = async (event, context) => {
       body: JSON.stringify({ 
         error: 'Internal server error', 
         details: error.message,
-        stack: error.stack
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
       }),
     }
+
+    console.log('📤 Returning error response:', errorResponse)
+    return errorResponse
   }
 }
