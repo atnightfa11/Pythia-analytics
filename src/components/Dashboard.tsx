@@ -24,12 +24,14 @@ import {
   Loader2,
   Bell,
   BellOff,
-  ExternalLink
+  ExternalLink,
+  TestTube
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 import { format } from 'date-fns';
 import { VisitorTrends } from './VisitorTrends';
 import { PrivacyControls } from './PrivacyControls';
+import { TestPanel } from './TestPanel';
 
 // Types for our live data
 interface TimeSeriesData {
@@ -225,6 +227,7 @@ export function Dashboard() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [isOnline, setIsOnline] = useState(true);
   const [epsilon, setEpsilon] = useState(1.0);
+  const [showTestPanel, setShowTestPanel] = useState(false);
   const [deviceData, setDeviceData] = useState([
     { name: 'Desktop', value: 45, color: BRAND_COLORS.primary },
     { name: 'Mobile', value: 40, color: BRAND_COLORS.secondary },
@@ -475,6 +478,17 @@ export function Dashboard() {
               </span>
             </div>
             <button
+              onClick={() => setShowTestPanel(!showTestPanel)}
+              className={`p-2 rounded-lg transition-colors ${
+                showTestPanel 
+                  ? 'text-blue-400 bg-blue-900/50' 
+                  : 'text-slate-400 hover:text-slate-100 hover:bg-slate-700'
+              }`}
+              title="Test Pythia functionality"
+            >
+              <TestTube className="w-5 h-5" />
+            </button>
+            <button
               onClick={() => window.location.reload()}
               disabled={loading}
               className="p-2 text-slate-400 hover:text-slate-100 hover:bg-slate-700 rounded-lg transition-colors disabled:opacity-50"
@@ -494,6 +508,13 @@ export function Dashboard() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-8">
+        {/* Test Panel */}
+        {showTestPanel && (
+          <div className="mb-8">
+            <TestPanel />
+          </div>
+        )}
+
         {/* Privacy Notice with Test Buttons */}
         <div className="mb-8 p-4 bg-gradient-to-r from-slate-800 to-slate-700 border border-slate-600 rounded-xl">
           <div className="flex items-center justify-between">
