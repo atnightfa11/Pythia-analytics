@@ -27,6 +27,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { format } from 'date-fns';
 import { VisitorTrends } from './VisitorTrends';
 import { PrivacyControls } from './PrivacyControls';
+import { CohortHeatmap } from './CohortHeatmap';
 
 // Types for our live data
 interface TimeSeriesData {
@@ -574,6 +575,11 @@ export function Dashboard() {
               onEpsilonChange={handleEpsilonChange}
             />
           </div>
+        </div>
+
+        {/* Cohort Retention Heatmap */}
+        <div className="mb-8">
+          <CohortHeatmap />
         </div>
 
         {/* Secondary Charts */}
