@@ -21,7 +21,9 @@ import {
   WifiOff,
   Check,
   X,
-  Loader2
+  Loader2,
+  Bell,
+  BellOff
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 import { format } from 'date-fns';
@@ -31,6 +33,7 @@ import { CohortHeatmap } from './CohortHeatmap';
 import { KPICards } from './KPICards';
 import { SourceBarChart } from './SourceBarChart';
 import { LocationsMap } from './LocationsMap';
+import { ConversionGoals } from './ConversionGoals';
 import { fetchKPIData, type KPIMetrics } from '../utils/kpiCalculations';
 
 // Types for our live data
@@ -84,7 +87,7 @@ const DEVICE_COLORS = {
 
 // Loading skeleton component
 const LoadingSkeleton = ({ className = "" }) => (
-  <div className={`animate-pulse bg-slate-200 rounded ${className}`}></div>
+  <div className={`animate-pulse bg-slate-600 rounded ${className}`}></div>
 );
 
 // Chart loading component
@@ -92,12 +95,12 @@ const ChartLoading = () => (
   <div className="flex items-center justify-center h-[300px]">
     <div className="text-center">
       <Loader2 className="w-8 h-8 text-slate-400 animate-spin mx-auto mb-2" />
-      <p className="text-sm text-slate-500">Loading chart data...</p>
+      <p className="text-sm text-slate-400">Loading chart data...</p>
     </div>
   </div>
 );
 
-// Alert Card Component
+// Enhanced Alert Card Component with dark mode support
 const AlertCard = ({ alert, onAcknowledge }: { alert: Alert; onAcknowledge: (id: string, ack: boolean) => void }) => {
   const formatTimestamp = (timestamp: string) => {
     const date = new Date(timestamp);
@@ -120,42 +123,78 @@ const AlertCard = ({ alert, onAcknowledge }: { alert: Alert; onAcknowledge: (id:
     }
   };
 
+  const getAlertStyles = () => {
+    if (alert.acknowledged) {
+      return 'bg-slate-700/50 border-slate-600 opacity-75';
+    }
+    
+    switch (alert.type) {
+      case 'spike':
+        return 'bg-amber-900/20 border-amber-700/50';
+      case 'drop':
+        return 'bg-red-900/20 border-red-700/50';
+      case 'anomaly':
+        return 'bg-purple-900/20 border-purple-700/50';
+      default:
+        return 'bg-emerald-900/20 border-emerald-700/50';
+    }
+  };
+
+  const getTextStyles = () => {
+    if (alert.acknowledged) {
+      return {
+        title: 'text-slate-400',
+        message: 'text-slate-500',
+        time: 'text-slate-500'
+      };
+    }
+    
+    switch (alert.type) {
+      case 'spike':
+        return {
+          title: 'text-amber-200',
+          message: 'text-amber-300',
+          time: 'text-slate-400'
+        };
+      case 'drop':
+        return {
+          title: 'text-red-200',
+          message: 'text-red-300',
+          time: 'text-slate-400'
+        };
+      case 'anomaly':
+        return {
+          title: 'text-purple-200',
+          message: 'text-purple-300',
+          time: 'text-slate-400'
+        };
+      default:
+        return {
+          title: 'text-emerald-200',
+          message: 'text-emerald-300',
+          time: 'text-slate-400'
+        };
+    }
+  };
+
+  const styles = getTextStyles();
+
   return (
-    <div 
-      className={`p-4 border rounded-lg transition-all ${
-        alert.acknowledged ? 'bg-slate-50 border-slate-200 opacity-75' :
-        alert.type === 'spike' ? 'bg-amber-50 border-amber-200' :
-        alert.type === 'drop' ? 'bg-red-50 border-red-200' :
-        alert.type === 'anomaly' ? 'bg-purple-50 border-purple-200' :
-        'bg-emerald-50 border-emerald-200'
-      }`}
-    >
+    <div className={`p-4 border rounded-lg transition-all ${getAlertStyles()}`}>
       <div className="flex items-start justify-between">
         <div className="flex items-center space-x-3 flex-1">
-          {alert.type === 'spike' && <TrendingUp className="w-5 h-5 text-amber-600 flex-shrink-0" />}
-          {alert.type === 'drop' && <ArrowDown className="w-5 h-5 text-red-600 flex-shrink-0" />}
-          {alert.type === 'anomaly' && <AlertTriangle className="w-5 h-5 text-purple-600 flex-shrink-0" />}
-          {alert.type === 'info' && <Activity className="w-5 h-5 text-emerald-600 flex-shrink-0" />}
+          {alert.type === 'spike' && <TrendingUp className="w-5 h-5 text-amber-400 flex-shrink-0" />}
+          {alert.type === 'drop' && <ArrowDown className="w-5 h-5 text-red-400 flex-shrink-0" />}
+          {alert.type === 'anomaly' && <AlertTriangle className="w-5 h-5 text-purple-400 flex-shrink-0" />}
+          {alert.type === 'info' && <Activity className="w-5 h-5 text-emerald-400 flex-shrink-0" />}
           <div className="flex-1 min-w-0">
-            <p className={`text-sm font-medium ${
-              alert.acknowledged ? 'text-slate-600' :
-              alert.type === 'spike' ? 'text-amber-900' :
-              alert.type === 'drop' ? 'text-red-900' :
-              alert.type === 'anomaly' ? 'text-purple-900' :
-              'text-emerald-900'
-            }`}>
+            <p className={`text-sm font-medium ${styles.title}`}>
               {alert.title}
             </p>
-            <p className={`text-xs ${
-              alert.acknowledged ? 'text-slate-500' :
-              alert.type === 'spike' ? 'text-amber-600' :
-              alert.type === 'drop' ? 'text-red-600' :
-              alert.type === 'anomaly' ? 'text-purple-600' :
-              'text-emerald-600'
-            }`}>
+            <p className={`text-xs ${styles.message}`}>
               {alert.message}
             </p>
-            <p className="text-xs text-slate-500 mt-1">
+            <p className={`text-xs ${styles.time} mt-1`}>
               {formatTimestamp(alert.timestamp)}
             </p>
           </div>
@@ -164,12 +203,12 @@ const AlertCard = ({ alert, onAcknowledge }: { alert: Alert; onAcknowledge: (id:
           onClick={() => onAcknowledge(alert.id, !alert.acknowledged)}
           className={`p-1 rounded transition-colors ${
             alert.acknowledged 
-              ? 'text-slate-400 hover:text-slate-600' 
-              : 'text-emerald-600 hover:text-emerald-700'
+              ? 'text-slate-500 hover:text-slate-300' 
+              : 'text-emerald-400 hover:text-emerald-300'
           }`}
           title={alert.acknowledged ? 'Mark as unread' : 'Mark as read'}
         >
-          {alert.acknowledged ? <X className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+          {alert.acknowledged ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
         </button>
       </div>
     </div>
@@ -259,7 +298,7 @@ export function Dashboard() {
           setForecast(null);
         }
 
-        // Smart alerts
+        // Smart alerts with better error handling
         try {
           const alertsResponse = await fetch('/.netlify/functions/get-alerts');
           if (alertsResponse.ok) {
@@ -586,12 +625,12 @@ export function Dashboard() {
             )}
           </div>
 
-          {/* Smart Alerts Panel */}
+          {/* Smart Alerts Panel - Enhanced for Dark Mode */}
           <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-semibold text-slate-100">Smart Alerts</h3>
               <div className="flex items-center space-x-2">
-                <Zap className="w-5 h-5 text-amber-500" />
+                <Zap className="w-5 h-5 text-amber-400" />
                 <span className="text-xs text-slate-400">
                   {alerts.filter(a => !a.acknowledged).length} unread
                 </span>
@@ -630,6 +669,11 @@ export function Dashboard() {
               )}
             </section>
           </div>
+        </div>
+
+        {/* Conversion Goals */}
+        <div className="mb-8">
+          <ConversionGoals dateRange={dateRange} />
         </div>
 
         {/* Locations Map */}
