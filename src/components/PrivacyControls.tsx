@@ -42,8 +42,8 @@ export function PrivacyControls({
     localStorage.setItem('pythia_epsilon', newEpsilon.toString());
     
     // Update global pythia settings if available
-    if (typeof window !== 'undefined' && window.pythiaSettings) {
-      window.pythiaSettings({ epsilon: newEpsilon });
+    if (typeof window !== 'undefined' && (window as any).pythiaSettings) {
+      (window as any).pythiaSettings({ epsilon: newEpsilon });
     }
   };
 
@@ -80,34 +80,34 @@ export function PrivacyControls({
   }, []);
 
   return (
-    <div className={`bg-white rounded-2xl border border-slate-200 p-4 shadow-sm ${className}`}>
+    <div className={`bg-slate-800 rounded-2xl border border-slate-700 p-4 shadow-sm ${className}`}>
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center space-x-2">
-          <Shield className="w-5 h-5 text-purple-600" />
-          <span className="font-semibold text-slate-900">Privacy Controls</span>
+          <Shield className="w-5 h-5 text-purple-400" />
+          <span className="font-semibold text-slate-100">Privacy Controls</span>
         </div>
         <div className="flex items-center space-x-2">
-          <span className="text-xs text-slate-500">ε =</span>
-          <span className="px-2 py-1 bg-purple-100 text-purple-800 text-sm font-mono rounded-lg">
+          <span className="text-xs text-slate-400">ε =</span>
+          <span className="px-2 py-1 bg-purple-900/50 text-purple-300 text-sm font-mono rounded-lg">
             {currentEpsilon.toFixed(1)}
           </span>
         </div>
       </div>
 
       {/* Privacy Level Indicator */}
-      <div className="mb-4 p-3 bg-slate-50 rounded-xl">
+      <div className="mb-4 p-3 bg-slate-700/50 rounded-xl">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-slate-700">Privacy Level</span>
+          <span className="text-sm font-medium text-slate-300">Privacy Level</span>
           <span className={`text-sm font-semibold ${
-            privacyLevel === 'High' ? 'text-emerald-600' :
-            privacyLevel === 'Moderate' ? 'text-blue-600' :
-            privacyLevel === 'Balanced' ? 'text-amber-600' : 'text-red-600'
+            privacyLevel === 'High' ? 'text-emerald-400' :
+            privacyLevel === 'Moderate' ? 'text-blue-400' :
+            privacyLevel === 'Balanced' ? 'text-amber-400' : 'text-red-400'
           }`}>
             {privacyLevel}
           </span>
         </div>
-        <div className="text-xs text-slate-600">
+        <div className="text-xs text-slate-400">
           ε = {currentEpsilon.toFixed(1)} → {privacyLevel.toLowerCase()} privacy, {noiseLevel} noise
         </div>
       </div>
@@ -115,11 +115,11 @@ export function PrivacyControls({
       {/* Epsilon Slider */}
       <div className="mb-4">
         <div className="flex items-center justify-between mb-2">
-          <label className="text-sm font-medium text-slate-700">
+          <label className="text-sm font-medium text-slate-300">
             Privacy Parameter (ε)
           </label>
           <div className="flex items-center space-x-1">
-            <Sliders className="w-3 h-3 text-slate-400" />
+            <Sliders className="w-3 h-3 text-slate-500" />
             <span className="text-xs text-slate-500">Adjust</span>
           </div>
         </div>
@@ -131,7 +131,7 @@ export function PrivacyControls({
           step={0.1}
           value={currentEpsilon}
           onChange={(e) => handleEpsilonChange(parseFloat(e.target.value))}
-          className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer privacy-slider"
+          className="w-full h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer privacy-slider"
         />
         
         <div className="flex justify-between text-xs text-slate-500 mt-1">
@@ -143,11 +143,11 @@ export function PrivacyControls({
       {/* Daily Budget Progress */}
       <div className="mb-4">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-slate-700">Daily Budget Used</span>
-          <span className="text-xs text-slate-600">{percentUsed}%</span>
+          <span className="text-sm font-medium text-slate-300">Daily Budget Used</span>
+          <span className="text-xs text-slate-400">{percentUsed}%</span>
         </div>
         
-        <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+        <div className="w-full h-2 bg-slate-600 rounded-full overflow-hidden">
           <div
             className={`h-2 rounded-full transition-all duration-300 ${
               percentUsed < 50 ? 'bg-emerald-500' :
@@ -164,16 +164,16 @@ export function PrivacyControls({
       </div>
 
       {/* Slack Digest Toggle */}
-      <div className="border-t border-slate-200 pt-4">
+      <div className="border-t border-slate-600 pt-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             {digestEnabled ? (
-              <Bell className="w-4 h-4 text-blue-600" />
+              <Bell className="w-4 h-4 text-blue-400" />
             ) : (
-              <BellOff className="w-4 h-4 text-slate-400" />
+              <BellOff className="w-4 h-4 text-slate-500" />
             )}
             <div>
-              <span className="text-sm font-medium text-slate-700">Daily Slack Digest</span>
+              <span className="text-sm font-medium text-slate-300">Daily Slack Digest</span>
               <p className="text-xs text-slate-500">
                 {digestEnabled ? 'Receive daily summary instead of real-time alerts' : 'Get alerts immediately'}
               </p>
@@ -188,16 +188,16 @@ export function PrivacyControls({
               disabled={updating}
               className="sr-only peer"
             />
-            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 disabled:opacity-50"></div>
+            <div className="w-11 h-6 bg-slate-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 disabled:opacity-50"></div>
           </label>
         </div>
       </div>
 
       {/* Info Footer */}
-      <div className="mt-4 p-2 bg-blue-50 rounded-lg">
+      <div className="mt-4 p-2 bg-blue-900/20 rounded-lg">
         <div className="flex items-start space-x-2">
-          <Info className="w-3 h-3 text-blue-600 mt-0.5 flex-shrink-0" />
-          <p className="text-xs text-blue-700 leading-relaxed">
+          <Info className="w-3 h-3 text-blue-400 mt-0.5 flex-shrink-0" />
+          <p className="text-xs text-blue-300 leading-relaxed">
             Lower ε values provide stronger privacy guarantees but add more noise to your data. 
             Your daily budget resets at midnight UTC.
           </p>
