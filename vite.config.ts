@@ -9,6 +9,8 @@ export default defineConfig({
     port: 5173
   },
   optimizeDeps: {
+    include: ['@visx/heatmap', '@visx/scale', '@visx/responsive', '@visx/tooltip', 'react-simple-maps'],
+    esbuildOptions: { target: 'es2019' },
     exclude: ['lucide-react'],
   },
 });

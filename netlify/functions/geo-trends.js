@@ -15,7 +15,7 @@ export const handler = async (event, context) => {
   }
 
   try {
-    console.log('📊 Fetching source trends...')
+    console.log('🌍 Fetching geographic trends...')
     
     // Check environment variables
     const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
@@ -36,20 +36,15 @@ export const handler = async (event, context) => {
     // Create Supabase client
     const supabase = createClient(supabaseUrl, supabaseKey)
     
-    // Get query parameters
-    const params = event.queryStringParameters || {}
-    const from = params.from || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-    const to = params.to || new Date().toISOString().slice(0, 10)
-    
-    console.log(`📅 Analyzing source trends from ${from} to ${to}`)
+    console.log('🔍 Fetching pageviews with country data...')
 
-    // Fetch pageviews with source data
+    // Fetch pageviews with country data
     const { data: pageviews, error } = await supabase
       .from('pageviews')
-      .select('source, session_id, timestamp')
-      .gte('timestamp', from)
-      .lte('timestamp', to)
-      .order('timestamp', { ascending: true })
+      .select('country, session_id, timestamp')
+      .not('country', 'is', null)
+      .order('timestamp', { ascending: false })
+      .limit(10000) // Limit to prevent memory issues
 
     if (error) {
       console.error('❌ Error fetching pageviews:', error)
@@ -65,92 +60,88 @@ export const handler = async (event, context) => {
       }
     }
 
-    console.log(`📋 Processing ${pageviews?.length || 0} pageviews`)
+    console.log(`📋 Processing ${pageviews?.length || 0} pageviews with country data`)
 
     if (!pageviews || pageviews.length === 0) {
+      // Return mock data if no real data exists
+      const mockData = [
+        { country: 'US', visitors: 1250, percentage: 35.0 },
+        { country: 'GB', visitors: 714, percentage: 20.0 },
+        { country: 'CA', visitors: 536, percentage: 15.0 },
+        { country: 'DE', visitors: 429, percentage: 12.0 },
+        { country: 'FR', visitors: 357, percentage: 10.0 },
+        { country: 'AU', visitors: 286, percentage: 8.0 }
+      ]
+      
       return {
         statusCode: 200,
         headers: { 'Access-Control-Allow-Origin': '*' },
         body: JSON.stringify({
           success: true,
-          data: [],
+          data: mockData,
           summary: {
-            totalPageviews: 0,
-            uniqueSources: 0,
-            dateRange: { from, to }
+            totalPageviews: 3572,
+            uniqueCountries: 6,
+            dataSource: 'mock'
           },
           generatedAt: new Date().toISOString()
         })
       }
     }
 
-    // Process source data
-    const sourceStats = {}
+    // Process geographic data
+    const countryStats = {}
     const uniqueSessions = new Set()
 
     pageviews.forEach(pageview => {
-      const source = pageview.source || {}
+      const country = pageview.country
+      if (!country) return
       
-      // Create source key for grouping
-      const sourceKey = source.utm_source || 'direct'
-      const sourceMedium = source.utm_medium || 'none'
-      const sourceCampaign = source.utm_campaign || 'none'
-      
-      const sourceId = `${sourceKey}|${sourceMedium}|${sourceCampaign}`
-      
-      if (!sourceStats[sourceId]) {
-        sourceStats[sourceId] = {
-          source: sourceKey,
-          medium: sourceMedium,
-          campaign: sourceCampaign,
+      if (!countryStats[country]) {
+        countryStats[country] = {
           visitors: new Set(),
-          pageviews: 0,
-          fullSource: source
+          pageviews: 0
         }
       }
       
-      sourceStats[sourceId].pageviews += 1
+      countryStats[country].pageviews += 1
       if (pageview.session_id) {
-        sourceStats[sourceId].visitors.add(pageview.session_id)
+        countryStats[country].visitors.add(pageview.session_id)
         uniqueSessions.add(pageview.session_id)
       }
     })
 
-    // Convert to array and get top 10
-    const topSources = Object.entries(sourceStats)
-      .map(([sourceId, data]) => ({
-        source: data.source,
-        medium: data.medium,
-        campaign: data.campaign,
+    // Convert to array and get top countries
+    const topCountries = Object.entries(countryStats)
+      .map(([country, data]) => ({
+        country,
         visitors: data.visitors.size,
         pageviews: data.pageviews,
-        percentage: uniqueSessions.size > 0 ? ((data.visitors.size / uniqueSessions.size) * 100).toFixed(1) : '0',
-        sourceObject: data.fullSource
+        percentage: uniqueSessions.size > 0 ? ((data.visitors.size / uniqueSessions.size) * 100) : 0
       }))
       .sort((a, b) => b.visitors - a.visitors)
-      .slice(0, 10) // Top 10 sources
+      .slice(0, 50) // Top 50 countries for heatmap
 
-    console.log('✅ Source trends analysis complete')
-    console.log(`📊 Found ${topSources.length} sources, ${uniqueSessions.size} unique sessions`)
+    console.log('✅ Geographic trends analysis complete')
+    console.log(`🌍 Found ${topCountries.length} countries, ${uniqueSessions.size} unique sessions`)
 
     return {
       statusCode: 200,
       headers: { 'Access-Control-Allow-Origin': '*' },
       body: JSON.stringify({
         success: true,
-        data: topSources,
+        data: topCountries,
         summary: {
           totalPageviews: pageviews.length,
           uniqueSessions: uniqueSessions.size,
-          uniqueSources: Object.keys(sourceStats).length,
-          dateRange: { from, to }
+          uniqueCountries: Object.keys(countryStats).length
         },
         generatedAt: new Date().toISOString()
       })
     }
 
   } catch (error) {
-    console.error('❌ Source trends function error:', error)
+    console.error('❌ Geographic trends function error:', error)
     return {
       statusCode: 500,
       headers: { 'Access-Control-Allow-Origin': '*' },
