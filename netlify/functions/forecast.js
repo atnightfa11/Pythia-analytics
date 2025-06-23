@@ -51,12 +51,12 @@ export const handler = async (event, context) => {
       .limit(1)
       .single()
 
-    // If we have a recent forecast (less than 1 hour old), return it
+    // If we have a recent forecast (less than 30 minutes old), return it
     if (latestForecast && !latestError) {
       const forecastAge = Date.now() - new Date(latestForecast.generated_at).getTime()
-      const oneHour = 60 * 60 * 1000
+      const thirtyMinutes = 30 * 60 * 1000
 
-      if (forecastAge < oneHour) {
+      if (forecastAge < thirtyMinutes) {
         console.log('📋 Returning cached forecast:', latestForecast)
         return {
           statusCode: 200,
@@ -83,7 +83,7 @@ export const handler = async (event, context) => {
       .from('events')
       .select('timestamp, count')
       .order('timestamp', { ascending: true })
-      .limit(30)
+      .limit(50) // Increased from 30 to get more data
 
     if (eventsError) {
       console.error('❌ Error fetching events:', eventsError)
@@ -122,20 +122,22 @@ export const handler = async (event, context) => {
     const timestamps = events.map(e => new Date(e.timestamp).getTime())
     
     // Calculate moving averages
-    const windowSize = Math.min(7, counts.length)
+    const windowSize = Math.min(10, counts.length) // Increased window size
     const recentCounts = counts.slice(-windowSize)
     const movingAverage = recentCounts.reduce((sum, count) => sum + count, 0) / recentCounts.length
     
-    // Calculate trend
+    // Calculate trend using linear regression on recent data
     let trend = 0
-    if (counts.length >= 2) {
-      const firstHalf = counts.slice(0, Math.floor(counts.length / 2))
-      const secondHalf = counts.slice(Math.floor(counts.length / 2))
+    if (counts.length >= 5) {
+      const recentData = counts.slice(-10) // Use last 10 points for trend
+      const n = recentData.length
+      const sumX = (n * (n - 1)) / 2 // Sum of indices 0,1,2...n-1
+      const sumY = recentData.reduce((sum, val) => sum + val, 0)
+      const sumXY = recentData.reduce((sum, val, idx) => sum + (idx * val), 0)
+      const sumX2 = (n * (n - 1) * (2 * n - 1)) / 6 // Sum of squares
       
-      const firstAvg = firstHalf.reduce((sum, count) => sum + count, 0) / firstHalf.length
-      const secondAvg = secondHalf.reduce((sum, count) => sum + count, 0) / secondHalf.length
-      
-      trend = (secondAvg - firstAvg) / firstAvg
+      const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX)
+      trend = slope / movingAverage // Normalize trend
     }
     
     // Apply seasonal adjustments (simplified)
@@ -144,33 +146,35 @@ export const handler = async (event, context) => {
     const dayOfWeek = now.getDay()
     
     // Business hours boost
-    const hourlyFactor = (hourOfDay >= 9 && hourOfDay <= 17) ? 1.2 : 0.8
+    const hourlyFactor = (hourOfDay >= 9 && hourOfDay <= 17) ? 1.3 : 
+                        (hourOfDay >= 18 && hourOfDay <= 22) ? 1.1 : 0.7
     
     // Weekend reduction
-    const weeklyFactor = (dayOfWeek === 0 || dayOfWeek === 6) ? 0.7 : 1.0
+    const weeklyFactor = (dayOfWeek === 0 || dayOfWeek === 6) ? 0.6 : 1.0
     
-    // Generate forecast
-    const baseForecast = movingAverage * (1 + trend * 0.1) // Apply 10% of trend
+    // Generate forecast with more realistic baseline
+    const trendAdjustment = Math.max(-0.5, Math.min(0.5, trend * 5)) // Limit trend impact
+    const baseForecast = movingAverage * (1 + trendAdjustment)
     const seasonalForecast = baseForecast * hourlyFactor * weeklyFactor
     
-    // Add some noise for realism
-    const noise = (Math.random() - 0.5) * 0.1 * seasonalForecast
-    const finalForecast = Math.max(0, seasonalForecast + noise)
+    // Add controlled noise for realism (smaller range)
+    const noise = (Math.random() - 0.5) * 0.05 * seasonalForecast
+    const finalForecast = Math.max(1, seasonalForecast + noise) // Ensure minimum of 1
     
     // Calculate MAPE (Mean Absolute Percentage Error) using recent data
     let mape = 0
-    if (counts.length >= 2) {
+    if (counts.length >= 3) {
       const errors = []
-      for (let i = 1; i < counts.length; i++) {
+      for (let i = 2; i < counts.length; i++) {
         const actual = counts[i]
-        const predicted = counts[i - 1] // Simple prediction: previous value
+        const predicted = (counts[i-1] + counts[i-2]) / 2 // Simple 2-point average prediction
         if (actual > 0) {
           errors.push(Math.abs((actual - predicted) / actual))
         }
       }
-      mape = errors.length > 0 ? (errors.reduce((sum, err) => sum + err, 0) / errors.length) * 100 : 15
+      mape = errors.length > 0 ? (errors.reduce((sum, err) => sum + err, 0) / errors.length) * 100 : 12
     } else {
-      mape = 15 // Default MAPE
+      mape = 12 // Default MAPE
     }
     
     console.log('🔮 Forecast calculation:')

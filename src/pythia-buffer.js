@@ -160,6 +160,7 @@ window.addEventListener('popstate', () => {
   }
 })
 
+// Enhanced batch sending with alerter trigger
 setInterval(async () => {
   if (!window.pythiaBuffer.length) return
   
@@ -185,6 +186,33 @@ setInterval(async () => {
       if (result.inserted?.pageviews > 0) {
         console.log(`📄 ${result.inserted.pageviews} pageviews with UTM data processed`)
       }
+      
+      // Wait a moment for data to be processed, then trigger alerter
+      setTimeout(async () => {
+        try {
+          console.log('🚨 Triggering alerter after batch insert...')
+          const alerterResponse = await fetch('/.netlify/functions/alerter', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+          })
+          
+          if (alerterResponse.ok) {
+            const alerterResult = await alerterResponse.json()
+            console.log('✅ Alerter triggered successfully:', alerterResult)
+            
+            if (alerterResult.alertSent) {
+              console.log('🚨 Alert was sent!', alerterResult.alertType)
+            } else {
+              console.log('ℹ️ No alert needed:', alerterResult.message)
+            }
+          } else {
+            console.warn('⚠️ Alerter returned non-200:', alerterResponse.status)
+          }
+        } catch (alerterError) {
+          console.error('❌ Failed to trigger alerter:', alerterError)
+        }
+      }, 2000) // Wait 2 seconds for data to be processed
+      
     } else {
       console.error('❌ server error:', result)
     }
@@ -200,7 +228,7 @@ setInterval(async () => {
   window.pythiaBuffer.length = 0
 }, 60_000)
 
-// helper for manual flush
+// Enhanced manual flush with alerter trigger
 window.flushPythia = async () => {
   const evts = window.pythiaBuffer.slice()
   window.pythiaBuffer.length = 0
@@ -231,6 +259,33 @@ window.flushPythia = async () => {
       if (result.inserted?.pageviews > 0) {
         console.log(`📄 ${result.inserted.pageviews} pageviews with UTM data processed`)
       }
+      
+      // Trigger alerter after manual flush
+      setTimeout(async () => {
+        try {
+          console.log('🚨 Triggering alerter after manual flush...')
+          const alerterResponse = await fetch('/.netlify/functions/alerter', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+          })
+          
+          if (alerterResponse.ok) {
+            const alerterResult = await alerterResponse.json()
+            console.log('✅ Alerter triggered after flush:', alerterResult)
+            
+            if (alerterResult.alertSent) {
+              console.log('🚨 Alert was sent!', alerterResult.alertType)
+            } else {
+              console.log('ℹ️ No alert needed:', alerterResult.message)
+            }
+          } else {
+            console.warn('⚠️ Alerter returned non-200:', alerterResponse.status)
+          }
+        } catch (alerterError) {
+          console.error('❌ Failed to trigger alerter after flush:', alerterError)
+        }
+      }, 1000) // Wait 1 second for data to be processed
+      
     } else {
       console.error('❌ manual flush failed:', result)
     }
@@ -296,5 +351,6 @@ window.pythiaStatus = () => {
 console.log('🔧 Pythia buffer initialized - privacy-first analytics with UTM tracking active')
 console.log('🆔 Session tracking enabled with device detection')
 console.log('🎯 UTM parameter tracking enabled')
+console.log('🚨 Automatic alerter triggering enabled')
 console.log('💡 Try: pythia("test_event", 1) then flushPythia()')
 console.log('🔍 Debug with: pythiaStatus()')
