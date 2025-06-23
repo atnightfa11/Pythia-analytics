@@ -129,7 +129,7 @@ export function VisitorTrends({
           tension: 0.25,
           cubicInterpolationMode: 'monotone' as const,
           pointBackgroundColor: '#38bdf8',
-          pointBorderColor: '#1e293b',
+          pointBorderColor: '#ffffff',
           pointBorderWidth: 2,
           pointRadius: 4,
           pointHoverRadius: 6,
@@ -145,7 +145,7 @@ export function VisitorTrends({
           tension: 0.25,
           cubicInterpolationMode: 'monotone' as const,
           pointBackgroundColor: '#64748b',
-          pointBorderColor: '#1e293b',
+          pointBorderColor: '#ffffff',
           pointBorderWidth: 2,
           pointRadius: 3,
           pointHoverRadius: 5,
@@ -174,14 +174,14 @@ export function VisitorTrends({
             size: 12,
             family: 'Inter, system-ui, sans-serif',
           },
-          color: '#94a3b8',
+          color: '#64748b',
         },
       },
       tooltip: {
-        backgroundColor: 'rgba(30, 41, 59, 0.95)',
-        titleColor: '#f1f5f9',
-        bodyColor: '#cbd5e1',
-        borderColor: '#475569',
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        titleColor: '#1e293b',
+        bodyColor: '#475569',
+        borderColor: '#e2e8f0',
         borderWidth: 1,
         cornerRadius: 8,
         displayColors: true,
@@ -209,10 +209,9 @@ export function VisitorTrends({
         } : undefined,
         grid: {
           display: false, // Hide X-axis grid lines
-          color: '#374151',
         },
         ticks: {
-          color: '#94a3b8',
+          color: '#64748b',
           font: {
             size: 11,
             family: 'Inter, system-ui, sans-serif',
@@ -224,10 +223,9 @@ export function VisitorTrends({
         beginAtZero: true,
         grid: {
           display: false, // Hide Y-axis grid lines as requested
-          color: '#374151',
         },
         ticks: {
-          color: '#94a3b8',
+          color: '#64748b',
           font: {
             size: 11,
             family: 'Inter, system-ui, sans-serif',
@@ -251,16 +249,16 @@ export function VisitorTrends({
   const selectedRange = DATE_RANGE_OPTIONS.find(option => option.value === dateRange);
 
   return (
-    <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
+    <div className="bg-white rounded-xl border border-slate-200 p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center space-x-3">
-          <div className="p-2 bg-sky-900/50 rounded-lg">
-            <TrendingUp className="w-5 h-5 text-sky-400" />
+          <div className="p-2 bg-sky-100 rounded-lg">
+            <TrendingUp className="w-5 h-5 text-sky-600" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-slate-100">Visitor Trends & Predictions</h3>
-            <p className="text-sm text-slate-400">
+            <h3 className="text-lg font-semibold text-slate-900">Visitor Trends & Predictions</h3>
+            <p className="text-sm text-slate-600">
               Actual vs Prophet forecast • {forecast?.mape ? `${(100 - forecast.mape).toFixed(0)}% accuracy` : 'Generating...'}
             </p>
           </div>
@@ -270,19 +268,19 @@ export function VisitorTrends({
         <div className="relative">
           <button
             onClick={() => setShowDropdown(!showDropdown)}
-            className="flex items-center space-x-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 border border-slate-600 rounded-lg transition-colors"
+            className="flex items-center space-x-2 px-4 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors"
           >
-            <Calendar className="w-4 h-4 text-slate-400" />
-            <span className="text-sm font-medium text-slate-300">
+            <Calendar className="w-4 h-4 text-slate-600" />
+            <span className="text-sm font-medium text-slate-700">
               {selectedRange?.label || 'Custom Range'}
             </span>
-            <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </button>
 
           {showDropdown && (
-            <div className="absolute right-0 mt-2 w-48 bg-slate-800 border border-slate-600 rounded-lg shadow-lg z-10">
+            <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-lg shadow-lg z-10">
               <div className="py-1">
                 {DATE_RANGE_OPTIONS.map((option) => (
                   <button
@@ -291,12 +289,12 @@ export function VisitorTrends({
                       onDateRangeChange?.(option.value);
                       setShowDropdown(false);
                     }}
-                    className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-700 transition-colors flex items-center justify-between ${
-                      dateRange === option.value ? 'bg-sky-900/50 text-sky-300' : 'text-slate-300'
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 transition-colors flex items-center justify-between ${
+                      dateRange === option.value ? 'bg-sky-50 text-sky-700' : 'text-slate-700'
                     }`}
                   >
                     <span>{option.label}</span>
-                    <span className="text-xs text-slate-500">{option.shortcut}</span>
+                    <span className="text-xs text-slate-400">{option.shortcut}</span>
                   </button>
                 ))}
               </div>
@@ -310,16 +308,16 @@ export function VisitorTrends({
         {loading ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
-              <BarChart3 className="w-8 h-8 text-slate-500 animate-pulse mx-auto mb-2" />
-              <p className="text-sm text-slate-400">Loading chart data...</p>
+              <BarChart3 className="w-8 h-8 text-slate-400 animate-pulse mx-auto mb-2" />
+              <p className="text-sm text-slate-500">Loading chart data...</p>
             </div>
           </div>
         ) : timeSeries.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
-              <BarChart3 className="w-8 h-8 text-slate-500 mx-auto mb-2" />
-              <p className="text-sm text-slate-400">No data available</p>
-              <p className="text-xs text-slate-500">Start tracking events to see trends</p>
+              <BarChart3 className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+              <p className="text-sm text-slate-500">No data available</p>
+              <p className="text-xs text-slate-400">Start tracking events to see trends</p>
             </div>
           </div>
         ) : (
@@ -329,15 +327,15 @@ export function VisitorTrends({
 
       {/* Forecast Summary */}
       {forecast && (
-        <div className="mt-4 p-3 bg-gradient-to-r from-purple-900/20 to-indigo-900/20 border border-purple-700/50 rounded-lg">
+        <div className="mt-4 p-3 bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-lg">
           <div className="flex items-center justify-between text-sm">
             <div className="flex items-center space-x-2">
-              <TrendingUp className="w-4 h-4 text-purple-400" />
-              <span className="font-medium text-purple-200">
+              <TrendingUp className="w-4 h-4 text-purple-600" />
+              <span className="font-medium text-purple-900">
                 Next Period Forecast: {forecast.forecast.toFixed(0)} visitors
               </span>
             </div>
-            <div className="text-purple-300">
+            <div className="text-purple-600">
               Model: {forecast.model || 'Prophet'} • Updated {format(new Date(forecast.generatedAt), 'HH:mm')}
             </div>
           </div>
