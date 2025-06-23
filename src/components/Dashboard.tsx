@@ -25,10 +25,12 @@ import {
   Sliders,
   MousePointer,
   Timer,
-  MapPin
+  MapPin,
+  ChevronDown,
+  Calendar
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, Legend } from 'recharts';
-import { format, addDays } from 'date-fns';
+import { format, addDays, subDays } from 'date-fns';
 
 // Types for our live data
 interface TimeSeriesData {
@@ -40,6 +42,7 @@ interface TimeSeriesData {
   events?: number;
   forecast?: number;
   isForecast?: boolean;
+  isHistoricalForecast?: boolean;
 }
 
 interface Alert {
@@ -67,6 +70,30 @@ interface ConversionData {
   rate: number;
 }
 
+// Date range options
+interface DateRangeOption {
+  label: string;
+  value: string;
+  days: number;
+  shortcut?: string;
+}
+
+const DATE_RANGE_OPTIONS: DateRangeOption[] = [
+  { label: 'Today', value: 'today', days: 1, shortcut: 'D' },
+  { label: 'Yesterday', value: 'yesterday', days: 1, shortcut: 'E' },
+  { label: 'Realtime', value: 'realtime', days: 1, shortcut: 'R' },
+  { label: 'Last 7 Days', value: 'last-7-days', days: 7, shortcut: 'W' },
+  { label: 'Last 28 Days', value: 'last-28-days', days: 28, shortcut: 'F' },
+  { label: 'Last 91 Days', value: 'last-91-days', days: 91, shortcut: 'N' },
+  { label: 'Month to Date', value: 'month-to-date', days: 30, shortcut: 'M' },
+  { label: 'Last Month', value: 'last-month', days: 30, shortcut: 'P' },
+  { label: 'Year to Date', value: 'year-to-date', days: 365, shortcut: 'Y' },
+  { label: 'Last 12 Months', value: 'last-12-months', days: 365, shortcut: 'L' },
+  { label: 'All time', value: 'all-time', days: 9999, shortcut: 'A' },
+  { label: 'Custom Range', value: 'custom', days: 30, shortcut: 'C' },
+  { label: 'Compare', value: 'compare', days: 30, shortcut: 'X' },
+];
+
 // Brand color palette
 const BRAND_COLORS = {
   primary: '#0EA5E9',
@@ -76,7 +103,8 @@ const BRAND_COLORS = {
   warning: '#F59E0B',
   error: '#EF4444',
   info: '#3B82F6',
-  forecast: '#F97316' // Orange for forecast
+  forecast: '#F97316', // Orange for forecast
+  historicalForecast: '#EC4899' // Pink for historical forecasts
 };
 
 // Device data colors using brand palette
@@ -103,6 +131,57 @@ const ChartLoading = () => (
     </div>
   </div>
 );
+
+// Date Range Selector Component
+const DateRangeSelector = ({ 
+  selectedRange, 
+  onRangeChange 
+}: { 
+  selectedRange: string; 
+  onRangeChange: (range: string) => void;
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const selectedOption = DATE_RANGE_OPTIONS.find(opt => opt.value === selectedRange) || DATE_RANGE_OPTIONS[4];
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center space-x-2 px-4 py-2 bg-white border border-slate-300 rounded-lg hover:border-slate-400 transition-colors min-w-[160px]"
+      >
+        <Calendar className="w-4 h-4 text-slate-500" />
+        <span className="text-sm font-medium text-slate-700">{selectedOption.label}</span>
+        <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-lg z-50">
+          <div className="p-2 max-h-80 overflow-y-auto">
+            {DATE_RANGE_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                onClick={() => {
+                  onRangeChange(option.value);
+                  setIsOpen(false);
+                }}
+                className={`w-full flex items-center justify-between px-3 py-2 text-sm rounded-md transition-colors ${
+                  selectedRange === option.value
+                    ? 'bg-sky-50 text-sky-700 font-medium'
+                    : 'text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <span>{option.label}</span>
+                {option.shortcut && (
+                  <span className="text-xs text-slate-400 font-mono">{option.shortcut}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // Alert Card Component
 const AlertCard = ({ alert, onAcknowledge }: { alert: Alert; onAcknowledge: (id: string, ack: boolean) => void }) => {
@@ -192,6 +271,9 @@ export function Dashboard() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [forecastData, setForecastData] = useState<any>(null);
 
+  // Date range state
+  const [selectedDateRange, setSelectedDateRange] = useState('last-28-days');
+
   // Additional state for enhanced features
   const [loading, setLoading] = useState(true);
   const [alertsLoading, setAlertsLoading] = useState(true);
@@ -212,6 +294,22 @@ export function Dashboard() {
     { name: 'Mobile', value: 40, color: BRAND_COLORS.secondary },
     { name: 'Tablet', value: 15, color: BRAND_COLORS.accent },
   ]);
+
+  // Generate historical forecast points (simulated for now)
+  const generateHistoricalForecasts = (actualData: TimeSeriesData[]) => {
+    return actualData.map((point, index) => {
+      // Simulate historical forecasts with some variance
+      const baseValue = point.count;
+      const variance = 0.85 + Math.random() * 0.3; // ±15% variance
+      const historicalForecast = baseValue * variance;
+      
+      return {
+        ...point,
+        historicalForecast,
+        isHistoricalForecast: true
+      };
+    });
+  };
 
   // Generate forecast points for the next 7 days
   const generateForecastPoints = (currentData: TimeSeriesData[], forecastValue: number) => {
@@ -320,6 +418,12 @@ export function Dashboard() {
     setGeographicData(mockGeoData);
   };
 
+  // Get days from selected range
+  const getDaysFromRange = (range: string): number => {
+    const option = DATE_RANGE_OPTIONS.find(opt => opt.value === range);
+    return option?.days || 28;
+  };
+
   // Data fetching as requested
   useEffect(() => {
     const loadData = async () => {
@@ -345,8 +449,11 @@ export function Dashboard() {
           throw new Error(`Database connection failed: ${testError.message}`);
         }
 
+        // Get days for current range
+        const days = getDaysFromRange(selectedDateRange);
+
         // Historical & real-time events
-        const eventsResponse = await fetch('/.netlify/functions/get-events');
+        const eventsResponse = await fetch(`/.netlify/functions/get-events?days=${days}`);
         if (!eventsResponse.ok) {
           const errorData = await eventsResponse.json().catch(() => ({}));
           throw new Error(`Events API error: ${eventsResponse.status} - ${errorData.error || errorData.details || eventsResponse.statusText}`);
@@ -363,6 +470,9 @@ export function Dashboard() {
           events: item.events,
           isForecast: false
         })) || [];
+
+        // Add historical forecasts to show actual vs predicted
+        const timeSeriesWithHistoricalForecasts = generateHistoricalForecasts(transformedTimeSeries);
         
         // Calculate live count from realtime data
         const realtimeTotal = eventsData.realtime?.reduce((sum: number, e: any) => sum + e.count, 0) || 0;
@@ -380,10 +490,10 @@ export function Dashboard() {
             setMape(forecastResult.mape || 15);
             setForecastData(forecastResult);
 
-            // Add forecast points to time series if we have forecast data
+            // Add future forecast points to time series if we have forecast data
             if (forecastResult.forecast && forecastResult.forecast > 0) {
-              const forecastPoints = generateForecastPoints(transformedTimeSeries, forecastResult.forecast);
-              transformedTimeSeries.push(...forecastPoints);
+              const forecastPoints = generateForecastPoints(timeSeriesWithHistoricalForecasts, forecastResult.forecast);
+              timeSeriesWithHistoricalForecasts.push(...forecastPoints);
             }
           }
         } catch (forecastError) {
@@ -392,7 +502,7 @@ export function Dashboard() {
           setMape(15);
         }
 
-        setTimeSeries(transformedTimeSeries);
+        setTimeSeries(timeSeriesWithHistoricalForecasts);
 
         // Smart alerts
         try {
@@ -421,13 +531,15 @@ export function Dashboard() {
     };
 
     loadData();
-  }, []);
+  }, [selectedDateRange]); // Reload when date range changes
 
   // Auto-refresh every 5 minutes
   useEffect(() => {
     const interval = setInterval(() => {
+      const days = getDaysFromRange(selectedDateRange);
+      
       // Reload data without showing loading state
-      fetch('/.netlify/functions/get-events')
+      fetch(`/.netlify/functions/get-events?days=${days}`)
         .then(r => r.json())
         .then(data => {
           const transformedTimeSeries = data.timeSeries?.map((item: any) => ({
@@ -440,13 +552,16 @@ export function Dashboard() {
             isForecast: false
           })) || [];
           
-          // Add forecast points if available
+          // Add historical forecasts
+          const timeSeriesWithHistoricalForecasts = generateHistoricalForecasts(transformedTimeSeries);
+          
+          // Add future forecast points if available
           if (forecast > 0) {
-            const forecastPoints = generateForecastPoints(transformedTimeSeries, forecast);
-            transformedTimeSeries.push(...forecastPoints);
+            const forecastPoints = generateForecastPoints(timeSeriesWithHistoricalForecasts, forecast);
+            timeSeriesWithHistoricalForecasts.push(...forecastPoints);
           }
           
-          setTimeSeries(transformedTimeSeries);
+          setTimeSeries(timeSeriesWithHistoricalForecasts);
           setLiveCount(data.realtime?.reduce((sum: number, e: any) => sum + e.count, 0) || 0);
           calculateEnhancedMetrics(data);
           setLastUpdated(new Date());
@@ -455,7 +570,7 @@ export function Dashboard() {
     }, 5 * 60 * 1000);
     
     return () => clearInterval(interval);
-  }, [forecast]);
+  }, [forecast, selectedDateRange]);
 
   // Test function for analytics
   const testAnalytics = () => {
@@ -556,6 +671,9 @@ export function Dashboard() {
   const totalPageviews = actualTimeSeries.reduce((sum, item) => sum + (item.pageviews || 0), 0);
   const totalEvents = actualTimeSeries.reduce((sum, item) => sum + (item.events || 0), 0);
 
+  // Get selected date range label for metrics
+  const selectedRangeLabel = DATE_RANGE_OPTIONS.find(opt => opt.value === selectedDateRange)?.label || 'Last 28 Days';
+
   // Loading state
   if (loading && timeSeries.length === 0) {
     return (
@@ -628,6 +746,12 @@ export function Dashboard() {
             </nav>
           </div>
           <div className="flex items-center space-x-4">
+            {/* Date Range Selector */}
+            <DateRangeSelector 
+              selectedRange={selectedDateRange}
+              onRangeChange={setSelectedDateRange}
+            />
+            
             {/* Live Gauge */}
             <div className="live-gauge flex items-center space-x-2 px-3 py-2 bg-emerald-50 rounded-lg">
               {isOnline ? (
@@ -743,7 +867,7 @@ export function Dashboard() {
             <h3 className="text-2xl font-bold text-slate-900 mb-1">
               {totalVisitors.toLocaleString()}
             </h3>
-            <p className="text-sm text-slate-600">Total Visitors</p>
+            <p className="text-sm text-slate-600">Total Visitors ({selectedRangeLabel})</p>
           </div>
 
           <div className="bg-white rounded-xl border border-slate-200 p-6 hover:shadow-lg transition-shadow">
@@ -759,7 +883,7 @@ export function Dashboard() {
             <h3 className="text-2xl font-bold text-slate-900 mb-1">
               {Math.floor(totalPageviews).toLocaleString()}
             </h3>
-            <p className="text-sm text-slate-600">Page Views</p>
+            <p className="text-sm text-slate-600">Page Views ({selectedRangeLabel})</p>
           </div>
 
           <div className="bg-white rounded-xl border border-slate-200 p-6 hover:shadow-lg transition-shadow">
@@ -829,19 +953,23 @@ export function Dashboard() {
 
         {/* Charts Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-          {/* Visitor Trends with Predictions */}
+          {/* Visitor Trends with Historical vs Predicted */}
           <div className="bg-white rounded-xl border border-slate-200 p-6">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-semibold text-slate-900">Visitor Trends & 7-Day Forecast</h3>
+              <h3 className="text-lg font-semibold text-slate-900">Visitor Trends: Actual vs Predicted</h3>
               <div className="flex items-center space-x-4">
                 <div className="flex items-center space-x-2">
                   <div className="w-3 h-3 rounded-full" style={{ backgroundColor: BRAND_COLORS.primary }}></div>
                   <span className="text-xs text-slate-600">Actual</span>
                 </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: BRAND_COLORS.historicalForecast }}></div>
+                  <span className="text-xs text-slate-600">Historical Forecast</span>
+                </div>
                 {forecast > 0 && (
                   <div className="flex items-center space-x-2">
                     <div className="w-3 h-3 rounded-full" style={{ backgroundColor: BRAND_COLORS.forecast }}></div>
-                    <span className="text-xs text-slate-600">Forecast</span>
+                    <span className="text-xs text-slate-600">Future Forecast</span>
                   </div>
                 )}
               </div>
@@ -856,13 +984,15 @@ export function Dashboard() {
                     dataKey="hour" 
                     stroke="#64748b" 
                     fontSize={12}
+                    tick={{ fontSize: 11 }}
                   />
-                  <YAxis stroke="#64748b" fontSize={12} />
+                  <YAxis stroke="#64748b" fontSize={12} tick={{ fontSize: 11 }} />
                   <Tooltip 
                     contentStyle={{ 
                       backgroundColor: 'white', 
                       border: '1px solid #e2e8f0',
-                      borderRadius: '8px'
+                      borderRadius: '8px',
+                      fontSize: '12px'
                     }}
                     formatter={formatTooltipValue}
                   />
@@ -873,15 +1003,26 @@ export function Dashboard() {
                     dataKey="count" 
                     name="Actual"
                     stroke={BRAND_COLORS.primary}
-                    strokeWidth={2}
-                    dot={{ fill: BRAND_COLORS.primary, strokeWidth: 2, r: 4 }}
+                    strokeWidth={3}
+                    dot={{ fill: BRAND_COLORS.primary, strokeWidth: 2, r: 5 }}
                     connectNulls={false}
                   />
-                  {/* Forecast line */}
+                  {/* Historical forecast line */}
+                  <Line 
+                    type="monotone" 
+                    dataKey="historicalForecast" 
+                    name="Historical Forecast"
+                    stroke={BRAND_COLORS.historicalForecast}
+                    strokeWidth={2}
+                    strokeDasharray="3 3"
+                    dot={{ fill: BRAND_COLORS.historicalForecast, strokeWidth: 1, r: 3 }}
+                    connectNulls={false}
+                  />
+                  {/* Future forecast line */}
                   <Line 
                     type="monotone" 
                     dataKey="forecast" 
-                    name="Forecast"
+                    name="Future Forecast"
                     stroke={BRAND_COLORS.forecast}
                     strokeWidth={2}
                     strokeDasharray="5 5"
@@ -912,13 +1053,15 @@ export function Dashboard() {
                     dataKey="hour" 
                     stroke="#64748b" 
                     fontSize={12}
+                    tick={{ fontSize: 11 }}
                   />
-                  <YAxis stroke="#64748b" fontSize={12} />
+                  <YAxis stroke="#64748b" fontSize={12} tick={{ fontSize: 11 }} />
                   <Tooltip 
                     contentStyle={{ 
                       backgroundColor: 'white', 
                       border: '1px solid #e2e8f0',
-                      borderRadius: '8px'
+                      borderRadius: '8px',
+                      fontSize: '12px'
                     }}
                     formatter={formatTooltipValue}
                   />
@@ -927,8 +1070,8 @@ export function Dashboard() {
                     dataKey="count" 
                     stroke={BRAND_COLORS.accent}
                     fill={BRAND_COLORS.accent}
-                    fillOpacity={0.2}
-                    strokeWidth={2}
+                    fillOpacity={0.3}
+                    strokeWidth={3}
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -950,14 +1093,16 @@ export function Dashboard() {
                   <XAxis 
                     dataKey="hour" 
                     stroke="#64748b" 
-                    fontSize={12}
+                    fontSize={10}
+                    tick={{ fontSize: 10 }}
                   />
-                  <YAxis stroke="#64748b" fontSize={12} />
+                  <YAxis stroke="#64748b" fontSize={10} tick={{ fontSize: 10 }} />
                   <Tooltip 
                     contentStyle={{ 
                       backgroundColor: 'white', 
                       border: '1px solid #e2e8f0',
-                      borderRadius: '8px'
+                      borderRadius: '8px',
+                      fontSize: '12px'
                     }}
                     formatter={formatTooltipValue}
                   />
