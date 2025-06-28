@@ -85,8 +85,11 @@ export const handler = async (event, context) => {
 
     // Get forecast from forecast function
     console.log('🔮 Fetching forecast...')
-    const baseUrl = process.env.NETLIFY_URL || process.env.SITE_URL || 'https://getpythia.tech'
-    const forecastUrl = `${baseUrl}/.netlify/functions/forecast`
+    // Use local forecast function during development, external service in production
+    const baseUrl = process.env.NETLIFY_URL || process.env.SITE_URL || 'http://localhost:8888'
+    const forecastUrl = baseUrl.includes('localhost') 
+      ? `${baseUrl}/.netlify/functions/forecast`
+      : 'https://pythia-forecasting-service.fly.dev/forecast'
     console.log('📍 Forecast URL:', forecastUrl)
     
     const forecastResponse = await fetch(forecastUrl)

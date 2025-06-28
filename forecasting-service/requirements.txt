@@ -1,0 +1,7 @@
+prophet
+supabase
+pandas
+numpy
+fastapi
+uvicorn[standard]
+joblib

@@ -80,34 +80,34 @@ export function PrivacyControls({
   }, []);
 
   return (
-    <div className={`bg-white rounded-2xl border border-slate-200 p-4 shadow-sm ${className}`}>
+    <div className={`bg-slate-800 rounded-2xl border border-slate-700 p-4 shadow-sm ${className}`}>
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center space-x-2">
-          <Shield className="w-5 h-5 text-purple-600" />
-          <span className="font-semibold text-slate-900">Privacy Controls</span>
+          <Shield className="w-5 h-5 text-purple-400" />
+          <span className="font-semibold text-slate-100">Privacy Controls</span>
         </div>
         <div className="flex items-center space-x-2">
-          <span className="text-xs text-slate-500">ε =</span>
-          <span className="px-2 py-1 bg-purple-100 text-purple-800 text-sm font-mono rounded-lg">
+          <span className="text-xs text-slate-400">ε =</span>
+          <span className="px-2 py-1 bg-purple-900/50 text-purple-300 text-sm font-mono rounded-lg">
             {currentEpsilon.toFixed(1)}
           </span>
         </div>
       </div>
 
       {/* Privacy Level Indicator */}
-      <div className="mb-4 p-3 bg-slate-50 rounded-xl">
+      <div className="mb-4 p-3 bg-slate-700/50 rounded-xl">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-slate-700">Privacy Level</span>
+          <span className="text-sm font-medium text-slate-300">Privacy Level</span>
           <span className={`text-sm font-semibold ${
-            privacyLevel === 'High' ? 'text-emerald-600' :
-            privacyLevel === 'Moderate' ? 'text-blue-600' :
-            privacyLevel === 'Balanced' ? 'text-amber-600' : 'text-red-600'
+            privacyLevel === 'High' ? 'text-emerald-400' :
+            privacyLevel === 'Moderate' ? 'text-blue-400' :
+            privacyLevel === 'Balanced' ? 'text-amber-400' : 'text-red-400'
           }`}>
             {privacyLevel}
           </span>
         </div>
-        <div className="text-xs text-slate-600">
+        <div className="text-xs text-slate-400">
           ε = {currentEpsilon.toFixed(1)} → {privacyLevel.toLowerCase()} privacy, {noiseLevel} noise
         </div>
       </div>
@@ -115,12 +115,12 @@ export function PrivacyControls({
       {/* Epsilon Slider */}
       <div className="mb-4">
         <div className="flex items-center justify-between mb-2">
-          <label className="text-sm font-medium text-slate-700">
+          <label className="text-sm font-medium text-slate-300">
             Privacy Parameter (ε)
           </label>
           <div className="flex items-center space-x-1">
             <Sliders className="w-3 h-3 text-slate-400" />
-            <span className="text-xs text-slate-500">Adjust</span>
+            <span className="text-xs text-slate-400">Adjust</span>
           </div>
         </div>
         
@@ -131,10 +131,11 @@ export function PrivacyControls({
           step={0.1}
           value={currentEpsilon}
           onChange={(e) => handleEpsilonChange(parseFloat(e.target.value))}
-          className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer privacy-slider"
+          className="w-full h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer privacy-slider"
+          aria-label="Privacy parameter epsilon value"
         />
         
-        <div className="flex justify-between text-xs text-slate-500 mt-1">
+        <div className="flex justify-between text-xs text-slate-400 mt-1">
           <span>More Private</span>
           <span>More Utility</span>
         </div>
@@ -205,7 +206,7 @@ export function PrivacyControls({
       </div>
 
       {/* Custom CSS for slider */}
-      <style jsx>{`
+      <style>{`
         .privacy-slider::-webkit-slider-thumb {
           appearance: none;
           height: 20px;
