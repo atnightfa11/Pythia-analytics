@@ -94,6 +94,7 @@ export const handler = async (event) => {
       const startTime = Date.now()
       
       const res = await fetch(forecastEndpoint, { 
+        method: 'POST',
         signal: controller.signal,
         headers: {
           'X-Pythia-Version': '1.2',
