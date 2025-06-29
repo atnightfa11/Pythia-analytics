@@ -4,6 +4,7 @@ import { LandingPage } from './components/LandingPage';
 import { Dashboard } from './components/Dashboard';
 import { Integration } from './components/Integration';
 import { SettingsPanel } from './components/Settings';
+import { BlogPost } from './components/BlogPost';
 import ErrorBoundary from './components/ErrorBoundary';
 import Spinner from './components/Spinner';
 
@@ -26,8 +27,10 @@ function App() {
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/docs" element={<Integration />} />
             <Route path="/integration" element={<Integration />} />
             <Route path="/settings" element={<SettingsPanel />} />
+            <Route path="/blog/differential-privacy" element={<BlogPost />} />
             
             {/* Advanced Analytics Routes with proper error boundaries */}
             <Route 

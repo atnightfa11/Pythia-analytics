@@ -26,10 +26,16 @@ export function SiteNav() {
               Dashboard
             </Link>
             <Link 
-              to="/integration" 
+              to="/docs" 
               className="text-slate-300 hover:text-white transition-colors"
             >
               Docs
+            </Link>
+            <Link 
+              to="/blog/differential-privacy" 
+              className="text-slate-300 hover:text-white transition-colors"
+            >
+              Blog
             </Link>
             <a 
               href="#pricing" 
@@ -42,7 +48,7 @@ export function SiteNav() {
           {/* Get Started Button */}
           <div className="hidden md:block">
             <Link
-              to="/signup"
+              to="/dashboard"
               className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg font-medium transition-colors"
             >
               Get Started
@@ -70,11 +76,18 @@ export function SiteNav() {
                 Dashboard
               </Link>
               <Link 
-                to="/integration" 
+                to="/docs" 
                 className="text-slate-300 hover:text-white transition-colors"
                 onClick={() => setIsMenuOpen(false)}
               >
                 Docs
+              </Link>
+              <Link 
+                to="/blog/differential-privacy" 
+                className="text-slate-300 hover:text-white transition-colors"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                Blog
               </Link>
               <a 
                 href="#pricing" 
@@ -84,7 +97,7 @@ export function SiteNav() {
                 Pricing
               </a>
               <Link
-                to="/signup"
+                to="/dashboard"
                 className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg font-medium transition-colors w-fit"
                 onClick={() => setIsMenuOpen(false)}
               >

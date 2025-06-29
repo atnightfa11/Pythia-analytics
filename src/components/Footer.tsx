@@ -8,11 +8,11 @@ export function Footer() {
   const footerLinks = {
     Product: [
       { name: 'Dashboard', href: '/dashboard' },
-      { name: 'Docs', href: '/integration' },
+      { name: 'Docs', href: '/docs' },
       { name: 'Changelog', href: '#changelog' }
     ],
     Company: [
-      { name: 'Blog', href: '#blog' },
+      { name: 'Blog', href: '/blog/differential-privacy' },
       { name: 'Careers', href: '#careers' },
       { name: 'Privacy', href: '#privacy' }
     ],
@@ -64,12 +64,21 @@ export function Footer() {
             <ul className="space-y-3">
               {footerLinks.Company.map((link) => (
                 <li key={link.name}>
-                  <a
-                    href={link.href}
-                    className="text-slate-400 hover:text-white transition-colors text-sm"
-                  >
-                    {link.name}
-                  </a>
+                  {link.name === 'Blog' ? (
+                    <Link
+                      to={link.href}
+                      className="text-slate-400 hover:text-white transition-colors text-sm"
+                    >
+                      {link.name}
+                    </Link>
+                  ) : (
+                    <a
+                      href={link.href}
+                      className="text-slate-400 hover:text-white transition-colors text-sm"
+                    >
+                      {link.name}
+                    </a>
+                  )}
                 </li>
               ))}
             </ul>

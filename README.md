@@ -2,73 +2,61 @@
 
 Privacy-first predictive analytics with differential privacy and real-time forecasting.
 
-## Setup Instructions
+## Quick Deploy
 
-### 1. Supabase Setup
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/your-username/pythia-analytics)
 
-1. Go to [supabase.com](https://supabase.com) and create a new project
-2. Once your project is created, go to Settings > API
-3. Copy your project URL and anon key
-4. Create a `.env` file in the root directory with:
-   ```
-   VITE_SUPABASE_URL=your_supabase_project_url
-   VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-   ```
+## Setup (5 minutes)
 
-### 2. Database Migration
+1. **Deploy** - Click the button above or fork and connect to Netlify
+2. **Database** - Create a [Supabase](https://supabase.com) project and run the migrations from `supabase/migrations/`
+3. **Environment** - Add your Supabase credentials to Netlify environment variables
+4. **Test** - Visit `/.netlify/functions/test-connection` to verify setup
 
-The database schema will be automatically created when you connect to Supabase. The migration files in `supabase/migrations/` contain:
+## Environment Variables
 
-- Events table for analytics data
-- Alerts table for notifications
-- Forecasts table for predictions
-- Proper RLS policies for security
-
-### 3. Netlify Deployment
-
-1. Connect your GitHub repository to Netlify
-2. Set the build command to: `npm run build`
-3. Set the publish directory to: `dist`
-4. Add the same environment variables from your `.env` file to Netlify's environment variables
-
-### 4. Environment Variables
-
-Add these to both your local `.env` file and Netlify's environment variables:
-
-```
-VITE_SUPABASE_URL=your_supabase_project_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-NETLIFY_URL=your_netlify_site_url
-SITE_URL=your_netlify_site_url
+```env
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your_anon_key_here
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
+NETLIFY_URL=https://your-site.netlify.app
+PYTHON_SERVICE_URL=https://forecasting-service.fly.dev
 ```
 
-## Features
-
-- **Differential Privacy**: Client-side noise injection for maximum privacy protection
-- **Real-time Analytics**: Live visitor tracking and event monitoring
-- **Predictive Modeling**: Forecast trends with Prophet and LLM-powered predictions
-- **Cookieless Tracking**: No cookies, no persistent identifiers
-- **Beautiful Dashboard**: Intuitive interface with actionable insights
-
-## Testing
-
-Use the dashboard test buttons or browser console:
-
-```javascript
-// Check status
-pythiaStatus()
-
-// Send test event
-pythia('test_event', 1)
-
-// Manual flush
-flushPythia()
-```
-
-## Privacy
-
-All data is processed with differential privacy (ε=1.0) and noise injection happens client-side before transmission.
+📖 **[Full Setup Guide](/docs)** - Complete installation and configuration
 
 ---
 
-*Ready for new Supabase and Netlify connections*
+## Features
+
+- **🔒 Differential Privacy**: Client-side noise injection (ε=1.0) with mathematical guarantees
+- **📈 Predictive Modeling**: Prophet forecasting with <16% MAPE accuracy
+- **🚨 Smart Alerts**: Automated anomaly detection with Slack notifications
+- **🍪 Cookieless Tracking**: No cookies, no persistent identifiers
+- **⚡ Real-time Analytics**: Live visitor tracking and event monitoring
+
+## Documentation
+
+📖 **[Complete Setup Guide](/docs)** - Detailed installation, configuration, and troubleshooting
+
+🧠 **[How Differential Privacy Works](/blog/differential-privacy)** - Technical deep dive
+
+## Testing
+
+```javascript
+// Browser console commands
+pythiaStatus()           // Check privacy settings
+pythia('test_event', 1)  // Send test event
+flushPythia()           // Manual flush
+```
+
+## Architecture
+
+- **Frontend**: React + TypeScript + Vite + Tailwind CSS
+- **Backend**: Netlify Functions + Supabase PostgreSQL
+- **Forecasting**: Python FastAPI service on Fly.io with Prophet
+- **Privacy**: Client-side differential privacy with Laplace noise
+
+---
+
+*Built for the bolt.new hackathon - Privacy-first analytics with predictive insights*
