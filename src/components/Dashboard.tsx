@@ -21,7 +21,8 @@ import {
   WifiOff,
   Loader2,
   Bell,
-  BellOff
+  BellOff,
+  Eye
 } from 'lucide-react';
 import { Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell, ComposedChart } from 'recharts';
 import { PrivacyControls } from './PrivacyControls';
@@ -260,7 +261,7 @@ const AlertCard = ({ alert, onAcknowledge }: { alert: Alert; onAcknowledge: (id:
 };
 
 export function Dashboard() {
-  const [dateRange, setDateRange] = useState(7);
+  const [dateRange, setDateRange] = useState(28);
   const [timeSeries, setTimeSeries] = useState<TimeSeriesData[]>([]);
   const [tsWithForecast, setTsWithForecast] = useState<TimeSeriesData[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -762,118 +763,136 @@ export function Dashboard() {
           </div>
         </div>
 
-        {/* Key Metrics - Plausible Style */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        {/* Key Metrics - Plausible Style (6 KPIs in one row) */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
           {/* Unique Visitors */}
-          <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 hover:shadow-lg transition-shadow">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-sky-900/50 rounded-lg">
-                <Users className="w-5 h-5 text-sky-400" />
+          <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 hover:shadow-lg transition-shadow">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-1.5 bg-sky-900/50 rounded-lg">
+                <Users className="w-4 h-4 text-sky-400" />
               </div>
-              <span 
-                className={`flex items-center text-sm font-medium ${
-                  metrics && metrics.sessionTrend >= 0 ? 'text-emerald-400' : 'text-red-400'
-                }`}
-                title={`${metrics ? Math.abs(metrics.sessionTrend).toFixed(1) : '0.0'}% change from last 7 days vs previous 7 days`}
-              >
+              <span className={`flex items-center text-xs font-medium ${
+                metrics && metrics.sessionTrend >= 0 ? 'text-emerald-400' : 'text-red-400'
+              }`}>
                 {metrics && metrics.sessionTrend >= 0 ? (
-                  <ArrowUp className="w-4 h-4 mr-1" />
+                  <ArrowUp className="w-3 h-3 mr-1" />
                 ) : (
-                  <ArrowDown className="w-4 h-4 mr-1" />
+                  <ArrowDown className="w-3 h-3 mr-1" />
                 )}
-                {metrics ? Math.abs(metrics.sessionTrend).toFixed(1) : '0.0'}%
+                {metrics ? Math.abs(metrics.sessionTrend).toFixed(0) : '0'}%
               </span>
             </div>
-            <h3 className="text-2xl font-bold text-slate-100 mb-1">
+            <h3 className="text-xl font-bold text-slate-100 mb-1">
               {metrics ? metrics.totalSessions.toLocaleString() : totalVisitors.toLocaleString()}
             </h3>
-            <p className="text-sm text-slate-400">
-              Unique Visitors ({dateRange}d)
-              <span className="block text-xs text-slate-500 mt-1">
-                Trend: Last 7d vs prev 7d
+            <p className="text-xs text-slate-400">Unique Visitors</p>
+          </div>
+
+          {/* Total Visits (Sessions) */}
+          <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 hover:shadow-lg transition-shadow">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-1.5 bg-indigo-900/50 rounded-lg">
+                <BarChart3 className="w-4 h-4 text-indigo-400" />
+              </div>
+              <span className={`flex items-center text-xs font-medium ${
+                metrics && metrics.sessionTrend >= 0 ? 'text-emerald-400' : 'text-red-400'
+              }`}>
+                {metrics && metrics.sessionTrend >= 0 ? (
+                  <ArrowUp className="w-3 h-3 mr-1" />
+                ) : (
+                  <ArrowDown className="w-3 h-3 mr-1" />
+                )}
+                {metrics ? Math.abs(metrics.sessionTrend).toFixed(0) : '0'}%
               </span>
-            </p>
+            </div>
+            <h3 className="text-xl font-bold text-slate-100 mb-1">
+              {metrics ? metrics.totalSessions.toLocaleString() : totalVisitors.toLocaleString()}
+            </h3>
+            <p className="text-xs text-slate-400">Total Visits</p>
           </div>
 
           {/* Page Views */}
-          <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 hover:shadow-lg transition-shadow">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-teal-900/50 rounded-lg">
-                <Globe className="w-5 h-5 text-teal-400" />
+          <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 hover:shadow-lg transition-shadow">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-1.5 bg-teal-900/50 rounded-lg">
+                <Globe className="w-4 h-4 text-teal-400" />
               </div>
-              <span 
-                className={`flex items-center text-sm font-medium ${pageviewChange.isPositive ? 'text-emerald-400' : 'text-red-400'}`}
-                title={`${pageviewChange.change.toFixed(1)}% change from recent half vs older half of ${dateRange}-day period`}
-              >
+              <span className={`flex items-center text-xs font-medium ${pageviewChange.isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
                 {pageviewChange.isPositive ? (
-                  <ArrowUp className="w-4 h-4 mr-1" />
+                  <ArrowUp className="w-3 h-3 mr-1" />
                 ) : (
-                  <ArrowDown className="w-4 h-4 mr-1" />
+                  <ArrowDown className="w-3 h-3 mr-1" />
                 )}
-                {pageviewChange.change.toFixed(1)}%
+                {pageviewChange.change.toFixed(0)}%
               </span>
             </div>
-            <h3 className="text-2xl font-bold text-slate-100 mb-1">
+            <h3 className="text-xl font-bold text-slate-100 mb-1">
               {Math.floor(totalPageviews).toLocaleString()}
             </h3>
-            <p className="text-sm text-slate-400">
-              Page Views ({dateRange}d)
-              <span className="block text-xs text-slate-500 mt-1">
-                Trend: Recent vs older half
+            <p className="text-xs text-slate-400">Page Views</p>
+          </div>
+
+          {/* Views per Visit */}
+          <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 hover:shadow-lg transition-shadow">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-1.5 bg-emerald-900/50 rounded-lg">
+                <Eye className="w-4 h-4 text-emerald-400" />
+              </div>
+              <span className="flex items-center text-xs font-medium text-slate-400">
+                <ArrowRight className="w-3 h-3 mr-1" />
+                --
               </span>
-            </p>
+            </div>
+            <h3 className="text-xl font-bold text-slate-100 mb-1">
+              {metrics && metrics.totalSessions > 0 
+                ? (totalPageviews / metrics.totalSessions).toFixed(1)
+                : '0.0'
+              }
+            </h3>
+            <p className="text-xs text-slate-400">Views per Visit</p>
           </div>
 
           {/* Bounce Rate */}
-          <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 hover:shadow-lg transition-shadow">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-purple-900/50 rounded-lg">
-                <Activity className="w-5 h-5 text-purple-400" />
+          <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 hover:shadow-lg transition-shadow">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-1.5 bg-purple-900/50 rounded-lg">
+                <Activity className="w-4 h-4 text-purple-400" />
               </div>
-              <span className={`flex items-center text-sm font-medium ${
-                metrics && metrics.bounceRate <= 70 ? 'text-emerald-400' : 'text-amber-400'
+              <span className={`flex items-center text-xs font-medium ${
+                metrics && metrics.bounceRate <= 60 ? 'text-emerald-400' : 'text-amber-400'
               }`}>
-                {metrics && metrics.bounceRate <= 70 ? (
-                  <ArrowDown className="w-4 h-4 mr-1" />
+                {metrics && metrics.bounceRate <= 60 ? (
+                  <ArrowDown className="w-3 h-3 mr-1" />
                 ) : (
-                  <ArrowUp className="w-4 h-4 mr-1" />
+                  <ArrowUp className="w-3 h-3 mr-1" />
                 )}
-                {metrics && metrics.bounceRate <= 70 ? 'Good' : 'High'}
+                {metrics && metrics.bounceRate <= 60 ? 'Good' : 'High'}
               </span>
             </div>
-            <h3 className="text-2xl font-bold text-slate-100 mb-1">
-              {metrics ? `${metrics.bounceRate.toFixed(1)}%` : '0.0%'}
+            <h3 className="text-xl font-bold text-slate-100 mb-1">
+              {metrics ? `${metrics.bounceRate.toFixed(0)}%` : '0%'}
             </h3>
-            <p className="text-sm text-slate-400">Bounce Rate ({dateRange}d)</p>
+            <p className="text-xs text-slate-400">Bounce Rate</p>
           </div>
 
-          {/* Conversion Rate */}
-          <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 hover:shadow-lg transition-shadow">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-orange-900/50 rounded-lg">
-                <Target className="w-5 h-5 text-orange-400" />
+          {/* Visitor Duration */}
+          <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 hover:shadow-lg transition-shadow">
+            <div className="flex items-center justify-between mb-3">
+              <div className="p-1.5 bg-orange-900/50 rounded-lg">
+                <Clock className="w-4 h-4 text-orange-400" />
               </div>
-              {conversions && conversions.conversionRate > 0 ? (
-                <span className="flex items-center text-sm font-medium text-emerald-400">
-                  <ArrowUp className="w-4 h-4 mr-1" />
-                  {conversions.conversionRate > 3 ? '+' : ''}
-                  {Math.abs(conversions.conversionRate - 3).toFixed(1)}%
-                </span>
-              ) : (
-                <span className="flex items-center text-sm font-medium text-slate-500">
-                  <ArrowRight className="w-4 h-4 mr-1" />
-                  0.0%
-                </span>
-              )}
+              <span className="flex items-center text-xs font-medium text-slate-400">
+                <ArrowRight className="w-3 h-3 mr-1" />
+                --
+              </span>
             </div>
-            <h3 className="text-2xl font-bold text-slate-100 mb-1">
-              {conversions ? `${conversions.conversionRate.toFixed(1)}%` : '0.0%'}
+            <h3 className="text-xl font-bold text-slate-100 mb-1">
+              {metrics 
+                ? `${Math.floor(metrics.avgTimeOnSite / 60)}:${String(Math.floor(metrics.avgTimeOnSite % 60)).padStart(2, '0')}`
+                : '0:00'
+              }
             </h3>
-            <p className="text-sm text-slate-400">
-              Conversion Rate {conversions && conversions.totalConversions > 0 && (
-                <span className="text-orange-400">({conversions.totalConversions} conversions)</span>
-              )}
-            </p>
+            <p className="text-xs text-slate-400">Visitor Duration</p>
           </div>
         </div>
 
@@ -1142,7 +1161,7 @@ export function Dashboard() {
               <h3 className="text-lg font-semibold text-slate-100">Recent Activity</h3>
               <div className="flex items-center space-x-2 text-slate-400">
                 <div className="w-2 h-2 bg-slate-400 rounded-full"></div>
-                <span className="text-sm font-medium">Last 7 days</span>
+                <span className="text-sm font-medium">Events (Last 7 days)</span>
               </div>
             </div>
             {loading ? (
@@ -1196,7 +1215,7 @@ export function Dashboard() {
                   />
                   <Area 
                     type="monotone" 
-                    dataKey="count" 
+                    dataKey="events" 
                     stroke={BRAND_COLORS.accent}
                     fill={BRAND_COLORS.accent}
                     fillOpacity={0.2}
