@@ -300,26 +300,25 @@ export function Dashboard() {
         }
         const eventsData = await eventsResponse.json();
         
-        // Transform time series data for charts - using correct visitor vs event metrics
+        // Transform time series data for charts - using events to match forecast scale
         const transformedTimeSeries = eventsData.timeSeries?.map((item: EventsDataItem) => ({
           hour: item.date,
-          count: item.visitors, // 🔧 FIX: Use actual visitor count, not event count
+          count: item.count, // ✅ Use event count to match forecast scale (~125)
           date: item.date,
-          visitors: item.visitors, // ✅ Unique visitors per day
-          pageviews: item.events, // ✅ Total pageview events
-          events: item.events, // ✅ Total events
-          eventCount: item.count, // 🆕 Noisy event count for reference
-          // Flag significant spikes for special styling (but keep real values!)
-          isSpike: item.visitors > 50 // 🔧 FIX: Base spike detection on visitors, not events
+          visitors: item.visitors, // Keep visitor count available
+          pageviews: item.events, 
+          events: item.events,
+          // Flag significant spikes for special styling
+          isSpike: item.count > 200 // Base spike detection on event count
         })) || [];
 
-        console.log(`📊 Analytics data: ${transformedTimeSeries.length} days, max visitors: ${Math.max(...transformedTimeSeries.map((item: TimeSeriesData) => item.count)).toLocaleString()}`);
+        console.log(`📊 Analytics data: ${transformedTimeSeries.length} days, max events: ${Math.max(...transformedTimeSeries.map((item: TimeSeriesData) => item.count)).toLocaleString()}`);
         
         setTimeSeries(transformedTimeSeries);
         
-        // Calculate live visitor count from realtime data (last 24 hours)
-        const realtimeVisitors = eventsData.realtime?.reduce((sum: number, e: RealtimeDataItem) => sum + (e.visitors || 0), 0) || 0;
-        setLiveCount(realtimeVisitors);
+        // Calculate live event count from realtime data (last 24 hours)
+        const realtimeEvents = eventsData.realtime?.reduce((sum: number, e: RealtimeDataItem) => sum + (e.count || 0), 0) || 0;
+        setLiveCount(realtimeEvents);
 
         // Forecast + accuracy - use fresh forecast instead of cached
         try {
@@ -435,7 +434,7 @@ export function Dashboard() {
         .then(data => {
           const transformedTimeSeries = data.timeSeries?.map((item: EventsDataItem) => ({
             hour: item.date,
-            count: item.visitors, // 🔧 Use visitors, not count
+            count: item.count, // ✅ Use event count to match forecast scale
             date: item.date,
             visitors: item.visitors,
             pageviews: item.events,
@@ -443,7 +442,7 @@ export function Dashboard() {
           })) || [];
           
           setTimeSeries(transformedTimeSeries);
-          setLiveCount(data.realtime?.reduce((sum: number, e: RealtimeDataItem) => sum + (e.visitors || 0), 0) || 0);
+          setLiveCount(data.realtime?.reduce((sum: number, e: RealtimeDataItem) => sum + (e.count || 0), 0) || 0);
           setLastUpdated(new Date());
         })
         .catch(err => console.warn('Auto-refresh failed:', err));
@@ -717,11 +716,11 @@ export function Dashboard() {
           <div className="lg:col-span-2">
             <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-semibold text-slate-100">Visitor Analytics with ML Predictions</h3>
+                <h3 className="text-lg font-semibold text-slate-100">Event Analytics with ML Predictions</h3>
                 <div className="flex items-center space-x-4">
                   <div className="flex items-center space-x-2">
                     <div className="w-3 h-3 rounded-full" style={{ backgroundColor: BRAND_COLORS.chart.actual }}></div>
-                    <span className="text-xs text-slate-300">Unique Visitors</span>
+                    <span className="text-xs text-slate-300">Total Events</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <div className="w-3 h-3 border-2 rounded-full bg-transparent" style={{ borderColor: BRAND_COLORS.chart.forecast }}></div>
@@ -785,14 +784,14 @@ export function Dashboard() {
                         name="Confidence Band"
                       />
 
-                      {/* Actual visitor data line - professional blue */}
+                      {/* Actual event data line - professional blue */}
                       <Line
                         type="monotone"
                         dataKey="count"
                         stroke={BRAND_COLORS.chart.actual}
                         strokeWidth={2.5}
                         dot={false}
-                        name="Unique Visitors"
+                        name="Total Events"
                         connectNulls={false}
                         strokeLinecap="round"
                         strokeLinejoin="round"
