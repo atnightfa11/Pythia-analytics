@@ -11,13 +11,13 @@ import {
   AlertTriangle,
   ArrowUp,
   ArrowDown,
+  ArrowRight,
   Activity,
   Clock,
   Target,
   Layers,
   Database,
   RefreshCw,
-  Wifi,
   WifiOff,
   Loader2,
   Bell,
@@ -270,6 +270,14 @@ export function Dashboard() {
   const [mape, setMape] = useState<number | null>(null);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [dateRange, setDateRange] = useState<number>(28);
+  
+  // 🎯 New conversion tracking state
+  const [conversions, setConversions] = useState<{
+    totalConversions: number;
+    convertingSessions: number;
+    conversionRate: number;
+    conversionEvents: string[];
+  } | null>(null);
 
   // Additional state for UI
   const [loading, setLoading] = useState(true);
@@ -319,6 +327,12 @@ export function Dashboard() {
         // Calculate live event count from realtime data (last 24 hours)
         const realtimeEvents = eventsData.realtime?.reduce((sum: number, e: RealtimeDataItem) => sum + (e.count || 0), 0) || 0;
         setLiveCount(realtimeEvents);
+        
+        // 🎯 Set conversion data from API response
+        if (eventsData.conversions) {
+          setConversions(eventsData.conversions);
+          console.log(`🎯 Conversions loaded: ${eventsData.conversions.conversionRate}% rate`);
+        }
 
         // Forecast + accuracy - use fresh forecast instead of cached
         try {
@@ -461,6 +475,18 @@ export function Dashboard() {
     }
   };
 
+  // 🎯 Test conversion function
+  const testConversion = () => {
+    if (typeof window.pythia === 'function') {
+      const conversionTypes = ['signup', 'purchase', 'subscribe'];
+      const randomType = conversionTypes[Math.floor(Math.random() * conversionTypes.length)];
+      window.pythia(randomType, 1, { source: 'dashboard_test', value: Math.floor(Math.random() * 100) + 10 });
+      console.log(`🎯 Test conversion sent: ${randomType}`);
+    } else {
+      console.error('❌ Pythia not available');
+    }
+  };
+
   const flushTest = async () => {
     if (typeof window.flushPythia === 'function') {
       const result = await window.flushPythia();
@@ -529,6 +555,30 @@ export function Dashboard() {
   const totalPageviews = timeSeries.reduce((sum, item) => sum + (item.pageviews || 0), 0);
   const totalEvents = timeSeries.reduce((sum, item) => sum + (item.events || 0), 0);
 
+  // 📈 Calculate dynamic percentage changes (comparing recent half vs older half)
+  const calculatePercentageChange = (data: TimeSeriesData[], metric: keyof TimeSeriesData) => {
+    if (data.length < 4) return { change: 0, isPositive: true };
+    
+    const midPoint = Math.floor(data.length / 2);
+    const olderHalf = data.slice(0, midPoint);
+    const recentHalf = data.slice(midPoint);
+    
+    const olderSum = olderHalf.reduce((sum, item) => sum + (Number(item[metric]) || 0), 0);
+    const recentSum = recentHalf.reduce((sum, item) => sum + (Number(item[metric]) || 0), 0);
+    
+    if (olderSum === 0) return { change: recentSum > 0 ? 100 : 0, isPositive: true };
+    
+    const percentChange = ((recentSum - olderSum) / olderSum) * 100;
+    return { 
+      change: Math.abs(percentChange), 
+      isPositive: percentChange >= 0 
+    };
+  };
+
+  const visitorChange = calculatePercentageChange(timeSeries, 'visitors');
+  const pageviewChange = calculatePercentageChange(timeSeries, 'pageviews');  
+  const eventChange = calculatePercentageChange(timeSeries, 'count');
+
   // Loading state
   if (loading && timeSeries.length === 0) {
     return (
@@ -580,16 +630,23 @@ export function Dashboard() {
             </nav>
           </div>
           <div className="flex items-center space-x-4">
-            {/* Live Gauge */}
-            <div className="live-gauge flex items-center space-x-2 px-3 py-2 bg-emerald-900/50 rounded-lg">
-              {isOnline ? (
-                <Wifi className="w-4 h-4 text-emerald-400" />
-              ) : (
-                <WifiOff className="w-4 h-4 text-red-400" />
-              )}
-              <span className="text-sm font-medium text-emerald-300">
-                Live Now: {liveCount}
-              </span>
+            {/* Enhanced Live Gauge */}
+            <div className="live-gauge flex items-center space-x-3 px-4 py-2 bg-gradient-to-r from-emerald-900/50 to-teal-900/50 rounded-lg border border-emerald-700/30">
+              <div className="flex items-center space-x-2">
+                {isOnline ? (
+                  <div className="relative">
+                    <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+                    <div className="absolute inset-0 w-2 h-2 bg-emerald-400 rounded-full animate-ping opacity-75"></div>
+                  </div>
+                ) : (
+                  <WifiOff className="w-4 h-4 text-red-400" />
+                )}
+                <span className="text-sm font-medium text-emerald-300">Live</span>
+              </div>
+              <div className="text-right">
+                <div className="text-lg font-bold text-emerald-200">{liveCount.toLocaleString()}</div>
+                <div className="text-xs text-emerald-400">events/24h</div>
+              </div>
             </div>
             <button
               onClick={() => window.location.reload()}
@@ -635,6 +692,12 @@ export function Dashboard() {
                   Test Event
                 </button>
                 <button
+                  onClick={testConversion}
+                  className="px-3 py-1 bg-orange-600 hover:bg-orange-700 text-white text-xs rounded-lg transition-colors"
+                >
+                  Test Conversion
+                </button>
+                <button
                   onClick={flushTest}
                   className="px-3 py-1 bg-teal-600 hover:bg-teal-700 text-white text-xs rounded-lg transition-colors"
                 >
@@ -652,9 +715,13 @@ export function Dashboard() {
               <div className="p-2 bg-sky-900/50 rounded-lg">
                 <Users className="w-5 h-5 text-sky-400" />
               </div>
-              <span className="flex items-center text-sm font-medium text-emerald-400">
-                <ArrowUp className="w-4 h-4 mr-1" />
-                12.3%
+              <span className={`flex items-center text-sm font-medium ${visitorChange.isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
+                {visitorChange.isPositive ? (
+                  <ArrowUp className="w-4 h-4 mr-1" />
+                ) : (
+                  <ArrowDown className="w-4 h-4 mr-1" />
+                )}
+                {visitorChange.change.toFixed(1)}%
               </span>
             </div>
             <h3 className="text-2xl font-bold text-slate-100 mb-1">
@@ -668,9 +735,13 @@ export function Dashboard() {
               <div className="p-2 bg-teal-900/50 rounded-lg">
                 <Globe className="w-5 h-5 text-teal-400" />
               </div>
-              <span className="flex items-center text-sm font-medium text-emerald-400">
-                <ArrowUp className="w-4 h-4 mr-1" />
-                8.7%
+              <span className={`flex items-center text-sm font-medium ${pageviewChange.isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
+                {pageviewChange.isPositive ? (
+                  <ArrowUp className="w-4 h-4 mr-1" />
+                ) : (
+                  <ArrowDown className="w-4 h-4 mr-1" />
+                )}
+                {pageviewChange.change.toFixed(1)}%
               </span>
             </div>
             <h3 className="text-2xl font-bold text-slate-100 mb-1">
@@ -684,9 +755,13 @@ export function Dashboard() {
               <div className="p-2 bg-purple-900/50 rounded-lg">
                 <Activity className="w-5 h-5 text-purple-400" />
               </div>
-              <span className="flex items-center text-sm font-medium text-emerald-400">
-                <ArrowUp className="w-4 h-4 mr-1" />
-                15.2%
+              <span className={`flex items-center text-sm font-medium ${eventChange.isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
+                {eventChange.isPositive ? (
+                  <ArrowUp className="w-4 h-4 mr-1" />
+                ) : (
+                  <ArrowDown className="w-4 h-4 mr-1" />
+                )}
+                {eventChange.change.toFixed(1)}%
               </span>
             </div>
             <h3 className="text-2xl font-bold text-slate-100 mb-1">
@@ -700,13 +775,27 @@ export function Dashboard() {
               <div className="p-2 bg-orange-900/50 rounded-lg">
                 <Target className="w-5 h-5 text-orange-400" />
               </div>
-              <span className="flex items-center text-sm font-medium text-emerald-400">
-                <ArrowUp className="w-4 h-4 mr-1" />
-                4.1%
-              </span>
+              {conversions && conversions.conversionRate > 0 ? (
+                <span className="flex items-center text-sm font-medium text-emerald-400">
+                  <ArrowUp className="w-4 h-4 mr-1" />
+                  {conversions.conversionRate > 3 ? '+' : ''}
+                  {Math.abs(conversions.conversionRate - 3).toFixed(1)}%
+                </span>
+              ) : (
+                <span className="flex items-center text-sm font-medium text-slate-500">
+                  <ArrowRight className="w-4 h-4 mr-1" />
+                  0.0%
+                </span>
+              )}
             </div>
-            <h3 className="text-2xl font-bold text-slate-100 mb-1">4.2%</h3>
-            <p className="text-sm text-slate-400">Conversion Rate</p>
+            <h3 className="text-2xl font-bold text-slate-100 mb-1">
+              {conversions ? `${conversions.conversionRate.toFixed(1)}%` : '0.0%'}
+            </h3>
+            <p className="text-sm text-slate-400">
+              Conversion Rate {conversions && conversions.totalConversions > 0 && (
+                <span className="text-orange-400">({conversions.totalConversions} conversions)</span>
+              )}
+            </p>
           </div>
         </div>
 

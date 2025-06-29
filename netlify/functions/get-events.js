@@ -162,8 +162,25 @@ export const handler = async (event, context) => {
       .sort((a, b) => new Date(a.hour).getTime() - new Date(b.hour).getTime())
       .slice(-24) // Last 24 hours
 
+    // 🎯 Calculate conversions from event types
+    const conversionEvents = ['signup', 'purchase', 'subscribe', 'conversion', 'register', 'buy', 'checkout', 'order']
+    const conversionSessions = new Set()
+    let totalConversions = 0
+    
+    events?.forEach(event => {
+      if (conversionEvents.includes(event.event_type?.toLowerCase())) {
+        if (event.session_id) {
+          conversionSessions.add(event.session_id)
+        }
+        totalConversions += Number(event.count) || 1
+      }
+    })
+    
+    const conversionRate = allSessions.size > 0 ? (conversionSessions.size / allSessions.size) * 100 : 0
+    
     console.log('✅ Data aggregation complete')
     console.log(`📊 Summary: ${totalEvents} events, ${totalCount} total count, ${allSessions.size} unique visitors`)
+    console.log(`🎯 Conversions: ${conversionSessions.size} converting sessions, ${totalConversions} total conversions, ${conversionRate.toFixed(1)}% rate`)
     console.log(`📈 Time series points: ${timeSeriesData.length}`)
     console.log(`⏰ Real-time points: ${realtimeData.length}`)
 
@@ -181,6 +198,12 @@ export const handler = async (event, context) => {
             end: endDate.toISOString()
           },
           eventTypes: Object.keys(eventTypeCounts).length
+        },
+        conversions: {
+          totalConversions,
+          convertingSessions: conversionSessions.size,
+          conversionRate: parseFloat(conversionRate.toFixed(2)),
+          conversionEvents: conversionEvents.filter(type => eventTypeCounts[type] > 0)
         },
         timeSeries: timeSeriesData,
         realtime: realtimeData,
