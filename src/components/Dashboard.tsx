@@ -537,6 +537,13 @@ export function Dashboard() {
   // Handle alert acknowledgment
   const handleAcknowledgeAlert = async (alertId: string, acknowledged: boolean = true) => {
     try {
+      console.log(`🔄 ${acknowledged ? 'Acknowledging' : 'Unacknowledging'} alert:`, alertId);
+      
+      // Optimistic update - update UI immediately
+      setAlerts(prev => prev.map(alert => 
+        alert.id === alertId ? { ...alert, acknowledged } : alert
+      ));
+      
       const response = await fetch('/.netlify/functions/acknowledge-alert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -544,15 +551,30 @@ export function Dashboard() {
       });
       
       if (response.ok) {
-        console.log(`✅ Alert ${acknowledged ? 'acknowledged' : 'unacknowledged'}:`, alertId);
-        
-        // Update local state
+        const result = await response.json();
+        console.log(`✅ Alert ${acknowledged ? 'acknowledged' : 'unacknowledged'} successfully:`, result);
+      } else {
+        // Revert optimistic update on failure
         setAlerts(prev => prev.map(alert => 
-          alert.id === alertId ? { ...alert, acknowledged } : alert
+          alert.id === alertId ? { ...alert, acknowledged: !acknowledged } : alert
         ));
+        
+        const errorData = await response.json();
+        console.error('❌ Failed to acknowledge alert:', errorData);
+        
+        // Show user feedback
+        alert(`Failed to ${acknowledged ? 'acknowledge' : 'unacknowledge'} alert: ${errorData.error || 'Unknown error'}`);
       }
     } catch (error) {
-      console.error('❌ Failed to acknowledge alert:', error);
+      console.error('❌ Error acknowledging alert:', error);
+      
+      // Revert optimistic update on error
+      setAlerts(prev => prev.map(alert => 
+        alert.id === alertId ? { ...alert, acknowledged: !acknowledged } : alert
+      ));
+      
+      // Show user feedback
+      alert(`Network error: Failed to ${acknowledged ? 'acknowledge' : 'unacknowledge'} alert`);
     }
   };
 
@@ -748,9 +770,12 @@ export function Dashboard() {
               <div className="p-2 bg-sky-900/50 rounded-lg">
                 <Users className="w-5 h-5 text-sky-400" />
               </div>
-              <span className={`flex items-center text-sm font-medium ${
-                metrics && metrics.sessionTrend >= 0 ? 'text-emerald-400' : 'text-red-400'
-              }`}>
+              <span 
+                className={`flex items-center text-sm font-medium ${
+                  metrics && metrics.sessionTrend >= 0 ? 'text-emerald-400' : 'text-red-400'
+                }`}
+                title={`${metrics ? Math.abs(metrics.sessionTrend).toFixed(1) : '0.0'}% change from last 7 days vs previous 7 days`}
+              >
                 {metrics && metrics.sessionTrend >= 0 ? (
                   <ArrowUp className="w-4 h-4 mr-1" />
                 ) : (
@@ -762,7 +787,12 @@ export function Dashboard() {
             <h3 className="text-2xl font-bold text-slate-100 mb-1">
               {metrics ? metrics.totalSessions.toLocaleString() : totalVisitors.toLocaleString()}
             </h3>
-            <p className="text-sm text-slate-400">Unique Visitors ({dateRange}d)</p>
+            <p className="text-sm text-slate-400">
+              Unique Visitors ({dateRange}d)
+              <span className="block text-xs text-slate-500 mt-1">
+                Trend: Last 7d vs prev 7d
+              </span>
+            </p>
           </div>
 
           {/* Page Views */}
@@ -771,7 +801,10 @@ export function Dashboard() {
               <div className="p-2 bg-teal-900/50 rounded-lg">
                 <Globe className="w-5 h-5 text-teal-400" />
               </div>
-              <span className={`flex items-center text-sm font-medium ${pageviewChange.isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
+              <span 
+                className={`flex items-center text-sm font-medium ${pageviewChange.isPositive ? 'text-emerald-400' : 'text-red-400'}`}
+                title={`${pageviewChange.change.toFixed(1)}% change from recent half vs older half of ${dateRange}-day period`}
+              >
                 {pageviewChange.isPositive ? (
                   <ArrowUp className="w-4 h-4 mr-1" />
                 ) : (
@@ -783,7 +816,12 @@ export function Dashboard() {
             <h3 className="text-2xl font-bold text-slate-100 mb-1">
               {Math.floor(totalPageviews).toLocaleString()}
             </h3>
-            <p className="text-sm text-slate-400">Page Views ({dateRange}d)</p>
+            <p className="text-sm text-slate-400">
+              Page Views ({dateRange}d)
+              <span className="block text-xs text-slate-500 mt-1">
+                Trend: Recent vs older half
+              </span>
+            </p>
           </div>
 
           {/* Bounce Rate */}
@@ -1111,17 +1149,35 @@ export function Dashboard() {
               <ChartLoading />
             ) : (
               <ResponsiveContainer width="100%" height={250}>
-                <AreaChart data={timeSeries.slice(-7)}>
+                <AreaChart 
+                  data={timeSeries.slice(-7)}
+                  margin={{ top: 5, right: 10, left: 5, bottom: 5 }}
+                >
                   <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                   <XAxis 
                     dataKey="date" 
                     stroke="#9ca3af" 
-                    fontSize={12}
-                    tickFormatter={(value) => 
-                      new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                    }
+                    fontSize={11}
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: '#9ca3af' }}
+                    interval={0}
+                    tickFormatter={(value) => {
+                      const date = new Date(value);
+                      return date.toLocaleDateString('en-US', { 
+                        weekday: 'short',
+                        day: 'numeric'
+                      });
+                    }}
                   />
-                  <YAxis stroke="#9ca3af" fontSize={12} />
+                  <YAxis 
+                    stroke="#9ca3af" 
+                    fontSize={11}
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: '#9ca3af' }}
+                    tickFormatter={(value) => value.toLocaleString()}
+                  />
                   <Tooltip 
                     contentStyle={{ 
                       backgroundColor: '#1e293b', 
@@ -1132,7 +1188,7 @@ export function Dashboard() {
                     formatter={formatTooltipValue}
                     labelFormatter={(label) => 
                       new Date(label).toLocaleDateString('en-US', { 
-                        weekday: 'short', 
+                        weekday: 'long', 
                         month: 'short', 
                         day: 'numeric' 
                       })
@@ -1145,6 +1201,7 @@ export function Dashboard() {
                     fill={BRAND_COLORS.accent}
                     fillOpacity={0.2}
                     strokeWidth={2}
+                    connectNulls={false}
                   />
                 </AreaChart>
               </ResponsiveContainer>
