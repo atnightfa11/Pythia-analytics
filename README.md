@@ -4,7 +4,7 @@ Privacy-first predictive analytics with differential privacy and real-time forec
 
 ## Quick Deploy
 
-[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/heathergrass/Pythia-analytics)
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/atnightfa11/Pythia-analytics)
 
 ## Setup (5 minutes)
 
