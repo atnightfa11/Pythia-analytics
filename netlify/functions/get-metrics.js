@@ -77,6 +77,18 @@ export const handler = async (event, context) => {
 
     console.log(`📋 Analyzing ${allEvents?.length || 0} events`)
 
+    // 📱 Get device data from pageviews table (where device field actually exists)
+    console.log('📱 Fetching device data from pageviews...')
+    const { data: pageviews, error: pageviewsError } = await supabase
+      .from('pageviews')
+      .select('device, session_id, timestamp')
+      .gte('timestamp', startDate.toISOString())
+      .lte('timestamp', endDate.toISOString())
+
+    if (pageviewsError) {
+      console.warn('⚠️ Error fetching pageviews for device data:', pageviewsError)
+    }
+
     // Group events by session for bounce rate and time on site calculations
     const sessionData = {}
     const deviceStats = {}
@@ -84,34 +96,40 @@ export const handler = async (event, context) => {
     let totalConversions = 0
     
     allEvents?.forEach(event => {
-      // Session analysis
-      if (event.session_id) {
-        if (!sessionData[event.session_id]) {
-          sessionData[event.session_id] = {
-            events: [],
-            device: event.device,
-            firstEvent: event.timestamp,
-            lastEvent: event.timestamp
-          }
+      // Session analysis (events table doesn't have session_id, so limited analysis)
+      const sessionId = event.session_id || `event-${event.id}`
+      if (!sessionData[sessionId]) {
+        sessionData[sessionId] = {
+          events: [],
+          device: null, // Will be populated from pageviews
+          firstEvent: event.timestamp,
+          lastEvent: event.timestamp
         }
-        sessionData[event.session_id].events.push(event)
-        sessionData[event.session_id].lastEvent = event.timestamp
       }
-
-      // Device analysis
-      if (event.device) {
-        if (!deviceStats[event.device]) {
-          deviceStats[event.device] = { sessions: new Set(), events: 0 }
-        }
-        if (event.session_id) {
-          deviceStats[event.device].sessions.add(event.session_id)
-        }
-        deviceStats[event.device].events += 1
-      }
+      sessionData[sessionId].events.push(event)
+      sessionData[sessionId].lastEvent = event.timestamp
 
       // Conversion tracking
       if (conversionEvents.includes(event.event_type.toLowerCase())) {
         totalConversions += 1
+      }
+    })
+
+    // 📱 Process device data from pageviews
+    pageviews?.forEach(pageview => {
+      if (pageview.device) {
+        if (!deviceStats[pageview.device]) {
+          deviceStats[pageview.device] = { sessions: new Set(), events: 0 }
+        }
+        if (pageview.session_id) {
+          deviceStats[pageview.device].sessions.add(pageview.session_id)
+        }
+        deviceStats[pageview.device].events += 1
+
+        // Update session data with device info
+        if (pageview.session_id && sessionData[pageview.session_id]) {
+          sessionData[pageview.session_id].device = pageview.device
+        }
       }
     })
 
@@ -141,9 +159,10 @@ export const handler = async (event, context) => {
     // Calculate conversion rate
     const conversionRate = totalSessions > 0 ? (totalConversions / totalSessions) * 100 : 0
 
-    // Device breakdown with unique sessions
+    // Device breakdown with unique sessions (using count field expected by dashboard)
     const deviceBreakdown = Object.entries(deviceStats).map(([device, stats]) => ({
       device,
+      count: stats.sessions.size, // Dashboard expects 'count' field
       sessions: stats.sessions.size,
       events: stats.events,
       percentage: totalSessions > 0 ? ((stats.sessions.size / totalSessions) * 100).toFixed(1) : '0'
