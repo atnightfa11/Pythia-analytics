@@ -1004,8 +1004,8 @@ export function Dashboard() {
                       title="Mean Absolute Percentage Error (lower is better)"
                     >
                       MAPE: <span className={`font-mono ${formatMape(mape).color}`}>
-                        {formatMape(mape).text} {formatMape(mape).icon}
-                      </span>
+                        {formatMape(mape).text}
+                      </span> <span className="text-slate-500 text-xs">(mean absolute percentage error)</span>
                       {forecast?.metadata?.tuning === 'hyperparameter-optimized' && (
                         <span className="ml-1 text-emerald-400">(Tuned)</span>
                       )}
