@@ -83,6 +83,7 @@ interface EventsDataItem {
 interface RealtimeDataItem {
   count: number;
   visitors: number; // 🆕 Unique visitors in this time period
+  hour?: string; // Hour timestamp
 }
 
 // Professional B2B color palette - muted and sophisticated
@@ -269,6 +270,9 @@ export function Dashboard() {
   const [forecast, setForecast] = useState<ForecastData | null>(null);
   const [mape, setMape] = useState<number | null>(null);
   const [conversions, setConversions] = useState<{ conversionRate: number; totalConversions: number } | null>(null);
+  const [totalUniqueVisitors, setTotalUniqueVisitors] = useState(0);
+  const [totalVisits, setTotalVisits] = useState(0);
+  const [realtimeData, setRealtimeData] = useState<TimeSeriesData[]>([]);
 
   // Additional state for UI
   const [loading, setLoading] = useState(true);
@@ -325,14 +329,30 @@ export function Dashboard() {
         
         setTimeSeries(transformedTimeSeries);
         
-        // Calculate live event count from realtime data (last 24 hours)
-        const realtimeEvents = eventsData.realtime?.reduce((sum: number, e: RealtimeDataItem) => sum + (e.count || 0), 0) || 0;
-        setLiveCount(realtimeEvents);
+        // Set realtime data for Recent Activity chart
+        const realtimeTimeSeries = eventsData.realtime?.map((item: RealtimeDataItem) => ({
+          hour: item.hour || new Date().toISOString(),
+          count: item.count || 0,
+          visitors: item.visitors || 0,
+          events: item.count || 0,
+          date: item.hour || new Date().toISOString()
+        })) || [];
+        setRealtimeData(realtimeTimeSeries);
+        
+        // Calculate live visitor count (visitors active in last hour)
+        const liveVisitors = realtimeTimeSeries.slice(-1)[0]?.visitors || 0;
+        setLiveCount(liveVisitors);
         
         // 🎯 Set conversion data from API response
         if (eventsData.conversions) {
           setConversions(eventsData.conversions);
           console.log(`🎯 Conversions loaded: ${eventsData.conversions.conversionRate}% rate`);
+        }
+
+        // 📊 Set unique visitors from summary data
+        if (eventsData.summary) {
+          setTotalUniqueVisitors(eventsData.summary.totalVisitors || 0);
+          console.log(`👥 Unique visitors: ${eventsData.summary.totalVisitors}`);
         }
 
         // Forecast + accuracy - use fresh forecast instead of cached
@@ -450,6 +470,7 @@ export function Dashboard() {
                 avgTimeOnSite: parseFloat(metricsResult.metrics.avgTimeOnSite) || 0,
                 sessionTrend: parseFloat(metricsResult.metrics.sessionTrend) || 0
               });
+              setTotalVisits(metricsResult.metrics.totalSessions || 0);
               console.log('📊 Plausible-style metrics loaded:', metricsResult.metrics);
             }
           }
@@ -700,7 +721,7 @@ export function Dashboard() {
               </div>
               <div className="text-right">
                 <div className="text-lg font-bold text-emerald-200">{liveCount.toLocaleString()}</div>
-                <div className="text-xs text-emerald-400">events/24h</div>
+                <div className="text-xs text-emerald-400">visitors now</div>
               </div>
             </div>
             <button
@@ -783,12 +804,12 @@ export function Dashboard() {
               </span>
             </div>
             <h3 className="text-xl font-bold text-slate-100 mb-1">
-              {metrics ? metrics.totalSessions.toLocaleString() : totalVisitors.toLocaleString()}
+              {totalUniqueVisitors.toLocaleString()}
             </h3>
             <p className="text-xs text-slate-400">Unique Visitors</p>
           </div>
 
-          {/* Total Visits (Sessions) */}
+          {/* Total Visits */}
           <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 hover:shadow-lg transition-shadow">
             <div className="flex items-center justify-between mb-3">
               <div className="p-1.5 bg-indigo-900/50 rounded-lg">
@@ -806,7 +827,7 @@ export function Dashboard() {
               </span>
             </div>
             <h3 className="text-xl font-bold text-slate-100 mb-1">
-              {metrics ? metrics.totalSessions.toLocaleString() : totalVisitors.toLocaleString()}
+              {totalVisits.toLocaleString()}
             </h3>
             <p className="text-xs text-slate-400">Total Visits</p>
           </div>
@@ -844,8 +865,8 @@ export function Dashboard() {
               </span>
             </div>
             <h3 className="text-xl font-bold text-slate-100 mb-1">
-              {metrics && metrics.totalSessions > 0 
-                ? (totalPageviews / metrics.totalSessions).toFixed(1)
+              {totalVisits > 0 
+                ? (totalPageviews / totalVisits).toFixed(1)
                 : '0.0'
               }
             </h3>
@@ -1155,13 +1176,13 @@ export function Dashboard() {
 
         {/* Secondary Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-          {/* Recent Activity */}
+          {/* Recent Activity (Hourly) */}
           <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-semibold text-slate-100">Recent Activity</h3>
               <div className="flex items-center space-x-2 text-slate-400">
-                <div className="w-2 h-2 bg-slate-400 rounded-full"></div>
-                <span className="text-sm font-medium">Events (Last 7 days)</span>
+                <div className="w-2 h-2 bg-orange-400 rounded-full"></div>
+                <span className="text-sm font-medium">Hourly visitors (Last 24h)</span>
               </div>
             </div>
             {loading ? (
@@ -1169,23 +1190,23 @@ export function Dashboard() {
             ) : (
               <ResponsiveContainer width="100%" height={250}>
                 <AreaChart 
-                  data={timeSeries.slice(-7)}
+                  data={realtimeData.slice(-12)} // Last 12 hours
                   margin={{ top: 5, right: 10, left: 5, bottom: 5 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                   <XAxis 
-                    dataKey="date" 
+                    dataKey="hour" 
                     stroke="#9ca3af" 
                     fontSize={11}
                     axisLine={false}
                     tickLine={false}
                     tick={{ fill: '#9ca3af' }}
-                    interval={0}
+                    interval={1}
                     tickFormatter={(value) => {
                       const date = new Date(value);
-                      return date.toLocaleDateString('en-US', { 
-                        weekday: 'short',
-                        day: 'numeric'
+                      return date.toLocaleTimeString('en-US', { 
+                        hour: 'numeric',
+                        hour12: false
                       });
                     }}
                   />
@@ -1204,18 +1225,22 @@ export function Dashboard() {
                       borderRadius: '8px',
                       color: '#f1f5f9'
                     }}
-                    formatter={formatTooltipValue}
+                    formatter={(value) => [
+                      `${value} visitors`, 
+                      'Hourly visitors'
+                    ]}
                     labelFormatter={(label) => 
-                      new Date(label).toLocaleDateString('en-US', { 
-                        weekday: 'long', 
+                      new Date(label).toLocaleString('en-US', { 
                         month: 'short', 
-                        day: 'numeric' 
+                        day: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit'
                       })
                     }
                   />
                   <Area 
                     type="monotone" 
-                    dataKey="events" 
+                    dataKey="visitors" 
                     stroke={BRAND_COLORS.accent}
                     fill={BRAND_COLORS.accent}
                     fillOpacity={0.2}
