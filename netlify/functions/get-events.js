@@ -84,11 +84,12 @@ export const handler = async (event, context) => {
 
     console.log(`📋 Found ${events?.length || 0} events`)
 
-    // Aggregate data by day
+    // Aggregate data by day with proper visitor counting
     const dailyData = {}
     const eventTypeCounts = {}
     let totalEvents = 0
     let totalCount = 0
+    const allSessions = new Set()
 
     events?.forEach(event => {
       const date = new Date(event.timestamp).toISOString().split('T')[0]
@@ -100,12 +101,20 @@ export const handler = async (event, context) => {
           date,
           events: 0,
           count: 0,
+          visitors: new Set(), // Track unique session_ids per day
           types: {}
         }
       }
       
       dailyData[date].events += 1
       dailyData[date].count += count
+      
+      // Track unique visitors (session_ids) per day
+      if (event.session_id) {
+        dailyData[date].visitors.add(event.session_id)
+        allSessions.add(event.session_id)
+      }
+      
       dailyData[date].types[event.event_type] = (dailyData[date].types[event.event_type] || 0) + count
 
       // Event type aggregation
@@ -116,7 +125,10 @@ export const handler = async (event, context) => {
     })
 
     // Convert to array and sort by date
-    const timeSeriesData = Object.values(dailyData).sort((a, b) => 
+    const timeSeriesData = Object.values(dailyData).map(day => ({
+      ...day,
+      visitors: day.visitors.size // Convert Set to count of unique visitors
+    })).sort((a, b) => 
       new Date(a.date).getTime() - new Date(b.date).getTime()
     )
 
@@ -133,18 +145,25 @@ export const handler = async (event, context) => {
     recentEvents?.forEach(event => {
       const hour = new Date(event.timestamp).toISOString().slice(0, 13) + ':00:00.000Z'
       if (!hourlyData[hour]) {
-        hourlyData[hour] = { hour, events: 0, count: 0 }
+        hourlyData[hour] = { hour, events: 0, count: 0, visitors: new Set() }
       }
       hourlyData[hour].events += 1
       hourlyData[hour].count += Number(event.count) || 0
+      if (event.session_id) {
+        hourlyData[hour].visitors.add(event.session_id)
+      }
     })
 
     const realtimeData = Object.values(hourlyData)
+      .map(hour => ({
+        ...hour,
+        visitors: hour.visitors.size // Convert Set to count
+      }))
       .sort((a, b) => new Date(a.hour).getTime() - new Date(b.hour).getTime())
       .slice(-24) // Last 24 hours
 
     console.log('✅ Data aggregation complete')
-    console.log(`📊 Summary: ${totalEvents} events, ${totalCount} total count`)
+    console.log(`📊 Summary: ${totalEvents} events, ${totalCount} total count, ${allSessions.size} unique visitors`)
     console.log(`📈 Time series points: ${timeSeriesData.length}`)
     console.log(`⏰ Real-time points: ${realtimeData.length}`)
 
@@ -156,6 +175,7 @@ export const handler = async (event, context) => {
         summary: {
           totalEvents,
           totalCount,
+          totalVisitors: allSessions.size,
           dateRange: {
             start: startDate.toISOString(),
             end: endDate.toISOString()
