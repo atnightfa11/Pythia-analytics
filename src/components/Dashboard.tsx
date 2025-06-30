@@ -339,9 +339,18 @@ export function Dashboard() {
         })) || [];
         setRealtimeData(realtimeTimeSeries);
         
-        // Calculate live visitor count (visitors active in last hour)
-        const liveVisitors = realtimeTimeSeries.slice(-1)[0]?.visitors || 0;
-        setLiveCount(liveVisitors);
+        // Get live visitor count from dedicated endpoint
+        try {
+          const liveResponse = await fetch('/.netlify/functions/get-live-visitors?minutes=5');
+          if (liveResponse.ok) {
+            const liveData = await liveResponse.json();
+            setLiveCount(liveData.liveVisitors || 0);
+            console.log(`👥 Live visitors: ${liveData.liveVisitors} (last 5 minutes)`);
+          }
+        } catch (liveError) {
+          console.warn('⚠️ Live visitors fetch failed:', liveError);
+          setLiveCount(0);
+        }
         
         // 🎯 Set conversion data from API response
         if (eventsData.conversions) {
@@ -495,16 +504,16 @@ export function Dashboard() {
     loadData();
   }, [dateRange]);
 
-  // Auto-refresh every 5 minutes
+  // Auto-refresh every 2 minutes for main data, every 30 seconds for live visitors
   useEffect(() => {
-    const interval = setInterval(() => {
-      // Reload data without showing loading state
+    // Main data refresh every 2 minutes
+    const mainInterval = setInterval(() => {
       fetch(`/.netlify/functions/get-events?days=${dateRange}`)
         .then(r => r.json())
         .then(data => {
           const transformedTimeSeries = data.timeSeries?.map((item: EventsDataItem) => ({
             hour: item.date,
-            count: item.count, // ✅ Use event count to match forecast scale
+            count: item.count,
             date: item.date,
             visitors: item.visitors,
             pageviews: item.events,
@@ -512,13 +521,26 @@ export function Dashboard() {
           })) || [];
           
           setTimeSeries(transformedTimeSeries);
-          setLiveCount(data.realtime?.reduce((sum: number, e: RealtimeDataItem) => sum + (e.count || 0), 0) || 0);
           setLastUpdated(new Date());
         })
-        .catch(err => console.warn('Auto-refresh failed:', err));
-    }, 5 * 60 * 1000);
+        .catch(err => console.warn('Main data auto-refresh failed:', err));
+    }, 2 * 60 * 1000);
+
+    // Live visitors refresh every 30 seconds
+    const liveInterval = setInterval(() => {
+      fetch('/.netlify/functions/get-live-visitors?minutes=5')
+        .then(r => r.json())
+        .then(data => {
+          setLiveCount(data.liveVisitors || 0);
+          console.log(`🔄 Live visitors updated: ${data.liveVisitors}`);
+        })
+        .catch(err => console.warn('Live visitors auto-refresh failed:', err));
+    }, 30 * 1000);
     
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(mainInterval);
+      clearInterval(liveInterval);
+    };
   }, [dateRange]);
 
   // Test function for analytics
