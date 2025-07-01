@@ -47,8 +47,9 @@ export const handler = async (event, context) => {
       }
     }
 
-    // Get latest actual data
+    // Get latest event to check for anomalies
     console.log('📊 Fetching latest event data...')
+    
     const { data: latest, error: fetchErr } = await supabase
       .from('events')
       .select('timestamp, count, event_type')
@@ -70,27 +71,33 @@ export const handler = async (event, context) => {
     }
 
     if (!latest || latest.length === 0) {
-      console.log('📭 No data available for alerting')
+      console.log('📭 No data available - no alerting needed')
       return {
         statusCode: 200,
         headers: { 'Access-Control-Allow-Origin': '*' },
         body: JSON.stringify({ 
-          message: 'No data available for alerting',
+          message: 'No data available',
           dataPoints: 0 
         })
       }
     }
 
-    console.log('📋 Latest data:', latest[0])
+    const latestEvent = latest[0]
+    console.log('📋 Latest event data:', latestEvent)
 
     // Get forecast from forecast function
     console.log('🔮 Fetching forecast...')
-    // Always use the Netlify forecast function for consistent caching and error handling
     const baseUrl = process.env.NETLIFY_URL || process.env.SITE_URL || 'https://getpythia.tech'
     const forecastUrl = `${baseUrl}/.netlify/functions/get-forecast`
     console.log('📍 Forecast URL:', forecastUrl)
     
-    const forecastResponse = await fetch(forecastUrl)
+    const forecastResponse = await fetch(forecastUrl, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      signal: AbortSignal.timeout(8000) // 8 second timeout
+    })
     
     if (!forecastResponse.ok) {
       console.error('❌ Forecast API error:', forecastResponse.status, forecastResponse.statusText)
@@ -119,13 +126,13 @@ export const handler = async (event, context) => {
       }
     }
 
-    const actual = latest[0].count
+    const actual = latestEvent.count
     const forecast = forecastData.forecast
     const drop = (forecast - actual) / forecast
 
     console.log('📊 Alert calculation:')
-    console.log('  Actual:', actual)
-    console.log('  Forecast:', forecast)
+    console.log('  Latest Event Count:', actual)
+    console.log('  Daily Forecast:', forecast)
     console.log('  Drop percentage:', (drop * 100).toFixed(1) + '%')
     console.log('  Threshold:', (THRESHOLD * 100).toFixed(1) + '%')
 
@@ -138,7 +145,7 @@ export const handler = async (event, context) => {
       const percentage = Math.abs(drop * 100).toFixed(0)
 
       // Format the timestamp properly
-      const eventTime = new Date(latest[0].timestamp)
+      const eventTime = new Date(latestEvent.timestamp)
       const formattedTime = eventTime.toLocaleString('en-US', {
         hour: 'numeric',
         minute: 'numeric',
@@ -150,7 +157,9 @@ export const handler = async (event, context) => {
       })
 
       // Create unique alert ID to prevent duplicates
-      const alertId = `${alertType}-${eventTime.getTime()}-${percentage}`
+      const today = new Date()
+      const dateStr = today.toISOString().split('T')[0]
+      const alertId = `${alertType}-${dateStr}-${percentage}`
 
       // Check if this alert already exists
       const { data: existingAlert } = await supabase
@@ -176,17 +185,19 @@ export const handler = async (event, context) => {
       const alertData = {
         id: alertId,
         type: alertType,
-        title: `Traffic ${alertType.toUpperCase()} Detected`,
-        message: `${percentage}% ${direction} forecast (actual: ${actual.toFixed(1)}, forecast: ${forecast.toFixed(1)})`,
-        timestamp: latest[0].timestamp,
+        title: `Daily Traffic ${alertType.toUpperCase()} Detected`,
+        message: `${percentage}% ${direction} daily forecast (actual: ${actual}, forecast: ${forecast.toFixed(1)})`,
+        timestamp: latestEvent.timestamp,
         severity: percentage > 50 ? 'high' : percentage > 25 ? 'medium' : 'low',
         data: {
           actual,
           forecast,
           dropPercentage: percentage,
-          eventType: latest[0].event_type,
+          eventType: latestEvent.event_type,
           formattedTime,
-          threshold: THRESHOLD * 100
+          threshold: THRESHOLD * 100,
+          latestEventCount: actual,
+          eventTimestamp: latestEvent.timestamp
         }
       }
 
@@ -217,14 +228,14 @@ export const handler = async (event, context) => {
       // Send Slack notification if configured
       if (SLACK_WEBHOOK) {
         const slackMessage = {
-          text: `${emoji} Alert: ${alertType.toUpperCase()} detected!`,
+          text: `${emoji} Alert: Daily ${alertType.toUpperCase()} detected!`,
           blocks: [
             {
               type: "section",
-              text: {
-                type: "mrkdwn",
-                text: `*${emoji} Traffic ${alertType.toUpperCase()} Alert*\n\nActual: *${actual.toFixed(1)}*\nForecast: *${forecast.toFixed(1)}*\nDifference: *${percentage}% ${direction} forecast*\n\nEvent: ${latest[0].event_type}\nTime: ${formattedTime}\nAlert ID: \`${alertId}\``
-              }
+                          text: {
+              type: "mrkdwn",
+              text: `*${emoji} Traffic ${alertType.toUpperCase()} Alert*\n\nLatest Event Count: *${actual}*\nDaily Forecast: *${forecast.toFixed(1)}*\nDifference: *${percentage}% ${direction} forecast*\n\nEvent Type: ${latestEvent.event_type}\nEvent Time: ${formattedTime}\nAlert ID: \`${alertId}\``
+            }
             }
           ]
         }
@@ -236,7 +247,8 @@ export const handler = async (event, context) => {
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(slackMessage)
+          body: JSON.stringify(slackMessage),
+          signal: AbortSignal.timeout(5000) // 5 second timeout
         })
 
         if (slackResponse.ok) {
@@ -259,6 +271,11 @@ export const handler = async (event, context) => {
           dropPercentage: percentage,
           formattedTime,
           slackSent: !!SLACK_WEBHOOK,
+          eventData: {
+            eventType: latestEvent.event_type,
+            eventCount: actual,
+            eventTime: latestEvent.timestamp
+          },
           message: `${alertType} alert saved and ${SLACK_WEBHOOK ? 'sent to Slack' : 'Slack not configured'}`
         })
       }
@@ -273,7 +290,12 @@ export const handler = async (event, context) => {
           forecast,
           dropPercentage: (Math.abs(drop) * 100).toFixed(1),
           threshold: (THRESHOLD * 100).toFixed(1),
-          message: 'No alert needed - within threshold'
+                  eventData: {
+          eventType: latestEvent.event_type,
+          eventCount: actual,
+          eventTime: latestEvent.timestamp
+        },
+        message: 'No alert needed - within threshold'
         })
       }
     }
