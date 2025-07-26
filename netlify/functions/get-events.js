@@ -61,7 +61,9 @@ export const handler = async (event, context) => {
       .gte('timestamp', startDate.toISOString())
       .lte('timestamp', endDate.toISOString())
       .order('timestamp', { ascending: true })
-      .limit(10000) // Explicit limit to override default 1000-row limit
+      .limit(50000) // Increased limit to override default 1000-row limit
+
+    console.log(`🔧 Applied limit of 50000 to override Supabase default`)
 
     if (eventType) {
       query = query.eq('event_type', eventType)
