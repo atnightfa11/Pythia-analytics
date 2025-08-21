@@ -41,13 +41,74 @@ PYTHON_SERVICE_URL=https://forecasting-service.fly.dev
 
 🧠 **[How Differential Privacy Works](/blog/differential-privacy)** - Technical deep dive
 
-## Testing
+## Development & Testing
+
+### End-to-End Testing Workflow
+
+1. **Setup Environment**:
+   ```bash
+   # Copy environment template
+   cp .env.example .env
+   # Fill in your Supabase credentials in .env
+   ```
+
+2. **Seed Test Data**:
+   ```bash
+   npm run seed
+   ```
+   This injects 30 days of realistic aggregate data with randomized mobile/desktop traffic patterns.
+
+3. **Start Development Server**:
+   ```bash
+   npm run dev
+   # Or with Netlify dev (recommended)
+   npx netlify dev
+   ```
+
+4. **Test Forecast API**:
+   ```bash
+   npm run forecast
+   ```
+   This calls `/.netlify/functions/forecast?force=true` and prints MAPE + generatedAt.
+
+### Browser Console Testing
 
 ```javascript
-// Browser console commands
-pythiaStatus()           // Check privacy settings
-pythia('test_event', 1)  // Send test event
-flushPythia()           // Manual flush
+// Check system status
+pythiaStatus()           // Buffer size, privacy settings, session info
+
+// Send test events
+pythia('test_event', 1)  // Basic event
+pythia('signup', 1, { source: 'test' })  // Conversion event
+
+// Manual operations
+flushPythia()           // Force buffer flush
+
+// Privacy controls
+window.pythiaStore.getState()  // Check current ε value
+```
+
+### Expected Results
+
+- **Data Seeding**: `✅ Successfully seeded X events!`
+- **Forecast API**: Should return MAPE < 30% with 30 days of future predictions
+- **Dashboard**: Shows live MAPE, forecast accuracy, and real-time alerts
+- **Alerts**: Trigger alerts with synthetic traffic spikes within 60 seconds
+- **Privacy**: Buffer flushes with randomized intervals (20-80s) and includes ε metadata
+
+### Environment Variables
+
+```env
+# Required
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your_anon_key_here
+
+# Optional - Testing
+SITE_URL=http://localhost:5173
+FORECAST_LOOKBACK_DAYS=60
+FORECAST_HORIZON_DAYS=30
+NETLIFY_ALERT_POLL_MS=30000
+SLACK_WEBHOOK_URL=your_slack_webhook_url
 ```
 
 ## Architecture

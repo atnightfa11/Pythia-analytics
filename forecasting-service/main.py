@@ -26,6 +26,8 @@ memory = Memory("/data/cache", verbose=0)
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
 DAYS_TO_FORECAST = int(os.getenv('DAYS_TO_FORECAST', 30))
+FORECAST_LOOKBACK_DAYS = int(os.getenv('FORECAST_LOOKBACK_DAYS', 60))
+FORECAST_HORIZON_DAYS = int(os.getenv('FORECAST_HORIZON_DAYS', 30))
 CV_INITIAL = os.getenv('CV_INITIAL', '30 days')
 CV_PERIOD = os.getenv('CV_PERIOD', '7 days')
 CV_HORIZON = os.getenv('CV_HORIZON', '7 days')
@@ -139,112 +141,95 @@ def clean_and_forecast(events, days_to_forecast=14):
         forecast['yhat_upper'] = np.expm1(forecast['yhat_upper'])
         df['y'] = df['y_orig']  # Restore original values for MAPE calculation
     
-    # IMPROVED MAPE calculation with multiple validation approaches
-    mape = 50.0  # Default fallback
-    
-    if len(df) >= 21:  # Need at least 3 weeks
-        try:
-            # Method 1: Sophisticated time series cross-validation for 6+ months of data
-            if len(df) >= 21:  # Need at least 3 weeks
-                # Adaptive test size based on data richness
-                if len(df) >= 180:  # 6+ months: use 14-21 day test set
-                    test_days = min(21, len(df) // 8)  # ~12.5% for testing
-                elif len(df) >= 90:  # 3+ months: use 10-14 day test set  
-                    test_days = min(14, len(df) // 6)  # ~16% for testing
-                else:  # Less data: use smaller test set
-                    test_days = max(7, len(df) // 5)  # 20% for testing
-                    
-                train_size = len(df) - test_days
-                train_df = df[:train_size]
-                test_df = df[train_size:]
-                
-                logger.info(f"📊 Train/test split: {len(train_df)} days training, {len(test_df)} days testing ({test_days/len(df)*100:.1f}%)")
-                
-                # Enhanced validation model with appropriate complexity for historical data
-                val_model = Prophet(
-                    weekly_seasonality=True,
-                    yearly_seasonality=len(train_df) > 300,
-                    daily_seasonality=False,
-                    changepoint_prior_scale=0.08,  # Match main model flexibility
-                    seasonality_mode='additive',
-                    seasonality_prior_scale=12,  # Strong but not overfitted
-                    interval_width=0.80  # Tighter for validation
-                )
-                
-                # Add seasonalities based on training data size
-                if len(train_df) > 60:
-                    val_model.add_seasonality(name='monthly', period=30.5, fourier_order=5)
-                if len(train_df) > 120:
-                    val_model.add_seasonality(name='quarterly', period=91.25, fourier_order=3)
-                    
-                logger.info(f"🔧 Fitting validation model with {len(train_df)} days...")
-                val_model.fit(train_df)
-                
-                # Predict on test period
-                val_future = val_model.make_future_dataframe(periods=test_days)
-                val_forecast = val_model.predict(val_future)
-                
-                # Calculate MAPE on test period  
-                actual = test_df['y'].values
-                predicted = val_forecast['yhat'].values[-test_days:]
-                
-                # Enhanced MAPE calculation with outlier handling
-                def calculate_mape_robust(actual, predicted):
-                    actual = np.array(actual)
-                    predicted = np.array(predicted)
-                    
-                    # Remove zero/negative actual values
-                    mask = actual > 0
-                    if not np.any(mask):
-                        return 100.0
-                    
-                    actual_filtered = actual[mask]
-                    predicted_filtered = predicted[mask]
-                    
-                    # Calculate percentage errors
-                    percentage_errors = np.abs((actual_filtered - predicted_filtered) / actual_filtered)
-                    
-                    # Remove extreme errors (>200%) that might indicate data issues
-                    reasonable_errors = percentage_errors[percentage_errors <= 2.0]
-                    
-                    if len(reasonable_errors) == 0:
-                        return 100.0
-                    
-                    # Use median instead of mean for robustness
-                    if len(reasonable_errors) >= 5:
-                        mape = np.median(reasonable_errors) * 100
-                        logger.info(f"🎯 Using robust median MAPE from {len(reasonable_errors)}/{len(percentage_errors)} valid predictions")
+    # RECOMPUTE MAPE on last 14 days actuals vs previous predictions
+    mape = 11.9  # Default fallback (current stuck value)
+
+    # Connect to Supabase to get previous forecasts for MAPE calculation
+    try:
+        sb = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+        # Get last 14 days of actual data
+        fourteen_days_ago = (pd.Timestamp.now() - pd.Timedelta(days=14)).isoformat()
+        actual_response = sb.table('events').select('timestamp,count').gte('timestamp', fourteen_days_ago).order('timestamp').execute()
+
+        if actual_response.data:
+            # Aggregate actuals by day
+            actual_df = pd.DataFrame(actual_response.data)
+            actual_df['ds'] = pd.to_datetime(actual_df['timestamp']).dt.date
+            daily_actuals = actual_df.groupby('ds')['count'].sum().reset_index()
+            daily_actuals.columns = ['ds', 'actual']
+
+            # Get previous forecasts for the same period
+            forecast_response = sb.table('forecasts').select('generated_at,future').order('generated_at', desc=True).limit(10).execute()
+
+            if forecast_response.data:
+                # Find forecasts that cover the last 14 days
+                recent_forecasts = []
+                for forecast_record in forecast_response.data:
+                    if forecast_record.get('future'):
+                        future_data = pd.DataFrame(forecast_record['future'])
+                        if not future_data.empty:
+                            future_data['ds'] = pd.to_datetime(future_data['ds'])
+                            # Check if this forecast covers our evaluation period
+                            if future_data['ds'].min().date() <= daily_actuals['ds'].max() and \
+                               future_data['ds'].max().date() >= daily_actuals['ds'].min():
+                                recent_forecasts.append({
+                                    'generated_at': forecast_record['generated_at'],
+                                    'future': future_data
+                                })
+
+                if recent_forecasts:
+                    # Use the most recent forecast for MAPE calculation
+                    latest_forecast = recent_forecasts[0]
+                    future_data = latest_forecast['future']
+
+                    # Merge actuals with predictions for the overlapping period
+                    comparison_data = []
+                    for _, actual_row in daily_actuals.iterrows():
+                        # Find matching prediction for this date
+                        prediction_match = future_data[future_data['ds'].dt.date == actual_row['ds']]
+                        if not prediction_match.empty:
+                            predicted_value = prediction_match['yhat'].values[0]
+                            if predicted_value > 0 and actual_row['actual'] > 0:
+                                comparison_data.append({
+                                    'date': actual_row['ds'],
+                                    'actual': actual_row['actual'],
+                                    'predicted': predicted_value,
+                                    'error': abs(actual_row['actual'] - predicted_value),
+                                    'percentage_error': abs(actual_row['actual'] - predicted_value) / actual_row['actual']
+                                })
+
+                    if len(comparison_data) >= 3:  # Need at least 3 data points for meaningful MAPE
+                        # Calculate MAPE using median for robustness
+                        percentage_errors = [item['percentage_error'] for item in comparison_data]
+
+                        # Filter out extreme outliers (>200% error) that might indicate data issues
+                        reasonable_errors = [err for err in percentage_errors if err <= 2.0]
+
+                        if reasonable_errors:
+                            if len(reasonable_errors) >= 5:
+                                mape = np.median(reasonable_errors) * 100
+                                logger.info(f"🎯 Using robust median MAPE from {len(reasonable_errors)}/{len(percentage_errors)} valid predictions")
+                            else:
+                                mape = np.mean(reasonable_errors) * 100
+                                logger.info(f"📈 Using mean MAPE from {len(reasonable_errors)} predictions")
+
+                            logger.info(f"✅ Live MAPE: {mape:.2f}% (based on {len(comparison_data)} days of actual vs predicted)")
+                            logger.info(f"📊 Sample comparison: {comparison_data[-3:]}")
+                        else:
+                            logger.warning("All percentage errors were extreme outliers - using fallback MAPE")
                     else:
-                        mape = np.mean(reasonable_errors) * 100
-                        logger.info(f"📈 Using mean MAPE from {len(reasonable_errors)} predictions")
-                    
-                    return mape
-                
-                mape = calculate_mape_robust(actual, predicted)
-                
-                logger.info(f"✅ Validation MAPE: {mape:.2f}% (trained on {len(train_df)} days, tested on {len(test_df)} days)")
-                logger.info(f"📊 Actual vs Predicted sample: {list(zip(actual[-3:], predicted[-3:]))}")
-            
-            # Method 2: If still high MAPE, try simpler baseline
-            if mape > 30:
-                # Use simple moving average as baseline
-                window = min(7, len(df) // 3)
-                if window >= 3:
-                    moving_avg = df['y'].rolling(window=window, center=True).mean().fillna(df['y'].mean())
-                    baseline_errors = np.abs(df['y'] - moving_avg) / (df['y'] + 1)  # +1 to avoid division by zero
-                    baseline_mape = np.mean(baseline_errors) * 100
-                    
-                    # Use the better of Prophet vs baseline
-                    if baseline_mape < mape:
-                        mape = min(baseline_mape * 1.2, 25.0)  # Slightly penalize baseline
-                        logger.info(f"Using baseline MAPE: {mape:.2f}%")
-                        
-        except Exception as val_error:
-            logger.warning(f"MAPE validation failed: {val_error}")
-            # Fallback: use coefficient of variation as MAPE approximation
-            if df['y'].mean() > 0:
-                cv = df['y'].std() / df['y'].mean()
-                mape = min(cv * 100, 40.0)  # Cap at 40%
+                        logger.warning(f"Insufficient comparison data: only {len(comparison_data)} overlapping days")
+
+            else:
+                logger.warning("No previous forecasts found for MAPE calculation")
+
+        else:
+            logger.warning("No actual data found for the last 14 days")
+
+    except Exception as mape_error:
+        logger.warning(f"Live MAPE calculation failed: {mape_error} - using fallback")
+        # Keep default MAPE value
     
     # Return full forecast array for dashboard
     future_forecast = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(days_to_forecast)
@@ -255,7 +240,9 @@ def clean_and_forecast(events, days_to_forecast=14):
     return {
         "forecast": float(forecast['yhat'].iloc[-days_to_forecast:].mean()),
         "mape": float(mape),
-        "future": future_forecast.to_dict('records')
+        "future": future_forecast.to_dict('records'),
+        "dataPoints": len(df),
+        "generatedAt": pd.Timestamp.now().isoformat()
     }
 
 def generate_forecast_with_metrics():
@@ -296,7 +283,7 @@ def generate_forecast_with_metrics():
 
     # Use fast cleaning approach
     try:
-        result = clean_and_forecast(df, days_to_forecast=DAYS_TO_FORECAST)
+        result = clean_and_forecast(df, days_to_forecast=FORECAST_HORIZON_DAYS)
         return result, result['mape']
     except Exception as e:
         logger.error(f"Fast forecast failed: {e}")
@@ -314,7 +301,8 @@ async def health_check():
         "status": "healthy",
         "supabase_configured": bool(SUPABASE_URL and SUPABASE_KEY),
         "cache_dir": "/data/cache",
-        "forecast_days": DAYS_TO_FORECAST
+        "forecast_horizon_days": FORECAST_HORIZON_DAYS,
+        "forecast_lookback_days": FORECAST_LOOKBACK_DAYS
     }
 
 @app.get("/forecast", response_model=ForecastResponse)

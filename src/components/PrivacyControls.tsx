@@ -1,5 +1,42 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, Sliders, Bell, BellOff, Info } from 'lucide-react';
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+
+// Zustand store for privacy settings
+interface PrivacyStore {
+  epsilon: number;
+  epsilonHistory: Array<{ value: number; timestamp: string }>;
+  setEpsilon: (epsilon: number) => void;
+  getLatestEpsilon: () => number;
+}
+
+export const usePrivacyStore = create<PrivacyStore>()(
+  persist(
+    (set, get) => ({
+      epsilon: 1.0,
+      epsilonHistory: [],
+      setEpsilon: (newEpsilon: number) => {
+        const timestamp = new Date().toISOString();
+        set((state) => ({
+          epsilon: newEpsilon,
+          epsilonHistory: [
+            ...state.epsilonHistory.slice(-9), // Keep last 10 entries
+            { value: newEpsilon, timestamp }
+          ]
+        }));
+      },
+      getLatestEpsilon: () => get().epsilon,
+    }),
+    {
+      name: 'pythia-privacy-store',
+      partialize: (state) => ({
+        epsilon: state.epsilon,
+        epsilonHistory: state.epsilonHistory
+      }),
+    }
+  )
+);
 
 interface PrivacyControlsProps {
   epsilon?: number;
@@ -7,44 +44,58 @@ interface PrivacyControlsProps {
   className?: string;
 }
 
-export function PrivacyControls({ 
-  epsilon = 1.0, 
+export function PrivacyControls({
+  epsilon: _, // eslint-disable-line @typescript-eslint/no-unused-vars
   onEpsilonChange,
   className = ""
 }: PrivacyControlsProps) {
-  const [currentEpsilon, setCurrentEpsilon] = useState(epsilon);
   const [dailyMax] = useState(2.0); // Daily privacy budget limit
-  const [used, setUsed] = useState(1.2); // Simulated daily usage
+  const [used] = useState(1.2); // Simulated daily usage
   const [digestEnabled, setDigestEnabled] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [showBanner, setShowBanner] = useState(false);
+  const [bannerMessage, setBannerMessage] = useState('');
+
+  // Zustand store
+  const { epsilon: storeEpsilon, setEpsilon } = usePrivacyStore();
+
+  // Use store epsilon as the source of truth
+  const currentEpsilon = storeEpsilon;
 
   // Calculate privacy metrics
   const percentUsed = Math.min(100, Math.round((used / dailyMax) * 100));
-  const privacyLevel = currentEpsilon <= 0.5 ? 'High' : 
-                      currentEpsilon <= 1.0 ? 'Moderate' : 
+  const privacyLevel = currentEpsilon <= 0.5 ? 'High' :
+                      currentEpsilon <= 1.0 ? 'Moderate' :
                       currentEpsilon <= 1.5 ? 'Balanced' : 'Low';
-  
+
   const noiseLevel = currentEpsilon <= 0.5 ? '~25%' :
                      currentEpsilon <= 1.0 ? '~10%' :
                      currentEpsilon <= 1.5 ? '~5%' : '~2%';
 
-  // Update epsilon when prop changes
-  useEffect(() => {
-    setCurrentEpsilon(epsilon);
-  }, [epsilon]);
-
-  // Handle epsilon change
+  // Handle epsilon change with banner notification
   const handleEpsilonChange = (newEpsilon: number) => {
-    setCurrentEpsilon(newEpsilon);
+    // Update Zustand store
+    setEpsilon(newEpsilon);
+
+    // Call parent callback
     onEpsilonChange?.(newEpsilon);
-    
-    // Store in localStorage
-    localStorage.setItem('pythia_epsilon', newEpsilon.toString());
-    
+
     // Update global pythia settings if available
     if (typeof window !== 'undefined' && window.pythiaSettings) {
       window.pythiaSettings({ epsilon: newEpsilon });
     }
+
+    // Show privacy banner for 3 seconds
+    const privacyLevel = newEpsilon <= 0.5 ? 'High' :
+                        newEpsilon <= 1.0 ? 'Moderate' :
+                        newEpsilon <= 1.5 ? 'Balanced' : 'Low';
+
+    setBannerMessage(`Privacy level updated: ε=${newEpsilon.toFixed(1)} (${privacyLevel})`);
+    setShowBanner(true);
+
+    setTimeout(() => {
+      setShowBanner(false);
+    }, 3000);
   };
 
   // Handle digest toggle
@@ -71,18 +122,34 @@ export function PrivacyControls({
     }
   };
 
-  // Load preferences on mount
+  // Load preferences on mount and expose store to window
   useEffect(() => {
     const savedDigest = localStorage.getItem('pythia_digest_enabled');
     if (savedDigest) {
       setDigestEnabled(savedDigest === 'true');
     }
+
+    // Expose store to window for buffer access
+    if (typeof window !== 'undefined') {
+      window.pythiaStore = usePrivacyStore;
+    }
   }, []);
 
   return (
-    <div className={`bg-slate-800 rounded-2xl border border-slate-700 p-4 shadow-sm ${className}`}>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+    <>
+      {/* Privacy Banner */}
+      {showBanner && (
+        <div className="fixed top-4 right-4 z-50 bg-emerald-900/90 backdrop-blur-md border border-emerald-700 text-emerald-200 px-4 py-2 rounded-lg shadow-lg animate-in slide-in-from-right duration-300">
+          <div className="flex items-center space-x-2">
+            <Shield className="w-4 h-4" />
+            <span className="text-sm font-medium">{bannerMessage}</span>
+          </div>
+        </div>
+      )}
+
+      <div className={`bg-slate-800 rounded-2xl border border-slate-700 p-4 shadow-sm ${className}`}>
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
         <div className="flex items-center space-x-2">
           <Shield className="w-5 h-5 text-purple-400" />
           <span className="font-semibold text-slate-100">Privacy Controls</span>
@@ -175,19 +242,23 @@ export function PrivacyControls({
             )}
             <div>
               <span className="text-sm font-medium text-slate-700">Daily Slack Digest</span>
-              <p className="text-xs text-slate-500">
+              <p id="digest-description" className="text-xs text-slate-500">
                 {digestEnabled ? 'Receive daily summary instead of real-time alerts' : 'Get alerts immediately'}
               </p>
             </div>
           </div>
           
           <label className="relative inline-flex items-center cursor-pointer">
+            <span className="sr-only">
+              {digestEnabled ? 'Disable daily Slack digest' : 'Enable daily Slack digest'}
+            </span>
             <input
               type="checkbox"
               checked={digestEnabled}
               onChange={(e) => handleDigestToggle(e.target.checked)}
               disabled={updating}
               className="sr-only peer"
+              aria-describedby="digest-description"
             />
             <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600 disabled:opacity-50"></div>
           </label>
@@ -241,6 +312,7 @@ export function PrivacyControls({
         }
       `}</style>
     </div>
+    </>
   );
 }
 
@@ -248,5 +320,6 @@ export function PrivacyControls({
 declare global {
   interface Window {
     pythiaSettings?: (settings: { epsilon: number }) => void;
+    pythiaStore?: typeof usePrivacyStore;
   }
 }

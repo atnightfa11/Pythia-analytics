@@ -7,13 +7,301 @@ const supabase = createClient(
 
 const SLACK_WEBHOOK = process.env.SLACK_WEBHOOK_URL
 const THRESHOLD = parseFloat(process.env.ALERT_THRESHOLD || '0.2') // 20%
+const POLL_INTERVAL_MS = parseInt(process.env.NETLIFY_ALERT_POLL_MS || '30000') // Default 30s
+const DEDUPE_WINDOW_MINUTES = 15 // Don't repeat same alert within 15 minutes
+const JITTER_MAX_MS = 10000 // ±10s jitter
+
+// Global variables for Supabase Realtime subscription
+let realtimeSubscription = null
+let isProcessingAlert = false
+let lastAlertTimes = new Map() // Track last alert time per segment
+
+// Initialize Supabase Realtime subscription for faster triggers
+function initializeRealtimeSubscription() {
+  try {
+    console.log('🔄 Initializing Supabase Realtime subscription...')
+
+    realtimeSubscription = supabase
+      .channel('noisy_aggregates_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'events',
+          filter: 'event_type=eq.pageview'
+        },
+        (payload) => {
+          console.log('📡 Realtime event received:', payload)
+          // Trigger alert check with slight delay to allow aggregates to settle
+          setTimeout(() => checkAlertsRealtime(payload.new), 2000)
+        }
+      )
+      .subscribe((status) => {
+        console.log('📡 Realtime subscription status:', status)
+      })
+
+    console.log('✅ Supabase Realtime subscription initialized')
+  } catch (error) {
+    console.error('❌ Failed to initialize Realtime subscription:', error)
+  }
+}
+
+// Enhanced alert checking with privacy compliance (noisy aggregates only)
+async function checkAlertsRealtime(eventData) {
+  if (isProcessingAlert) {
+    console.log('⚠️ Alert processing already in progress, skipping...')
+    return
+  }
+
+  try {
+    isProcessingAlert = true
+    console.log('🔍 Checking alerts via Realtime trigger...')
+
+    // Use noisy aggregates instead of raw events for privacy
+    await checkAlertsFromAggregates()
+
+  } catch (error) {
+    console.error('❌ Realtime alert check failed:', error)
+  } finally {
+    isProcessingAlert = false
+  }
+}
+
+// Check alerts using noisy aggregates (privacy-compliant)
+async function checkAlertsFromAggregates() {
+  try {
+    // Get noisy daily aggregates for the last 7 days
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+
+    const { data: aggregates, error: aggError } = await supabase
+      .from('events')
+      .select(`
+        timestamp,
+        count,
+        event_type,
+        device_type,
+        country,
+        city,
+        region
+      `)
+      .gte('timestamp', sevenDaysAgo)
+      .order('timestamp', { ascending: false })
+      .limit(1000) // Get recent data for analysis
+
+    if (aggError) throw aggError
+
+    if (!aggregates || aggregates.length === 0) {
+      console.log('📭 No aggregate data available')
+      return
+    }
+
+    // Group by day and segment for privacy-compliant analysis
+    const dailyAggregates = new Map()
+
+    aggregates.forEach(event => {
+      const day = new Date(event.timestamp).toISOString().split('T')[0]
+      const segment = `${event.device_type || 'unknown'}-${event.country || 'unknown'}`
+
+      const key = `${day}-${segment}`
+      if (!dailyAggregates.has(key)) {
+        dailyAggregates.set(key, {
+          day,
+          segment,
+          totalCount: 0,
+          eventCount: 0,
+          timestamp: event.timestamp
+        })
+      }
+
+      const agg = dailyAggregates.get(key)
+      agg.totalCount += event.count || 0
+      agg.eventCount += 1
+    })
+
+    // Get latest forecast for comparison
+    const baseUrl = process.env.NETLIFY_URL || process.env.SITE_URL || 'https://getpythia.tech'
+    const forecastUrl = `${baseUrl}/.netlify/functions/forecast`
+
+    const forecastResponse = await fetch(forecastUrl, {
+      method: 'GET',
+      signal: AbortSignal.timeout(8000)
+    })
+
+    if (!forecastResponse.ok) {
+      throw new Error(`Forecast API error: ${forecastResponse.status}`)
+    }
+
+    const forecastData = await forecastResponse.json()
+
+    if (!forecastData.forecast || forecastData.forecast === 0) {
+      console.log('⚠️ No valid forecast available')
+      return
+    }
+
+    // Check each segment for anomalies
+    for (const [key, agg] of dailyAggregates) {
+      await checkSegmentForAlert(agg, forecastData.forecast)
+    }
+
+  } catch (error) {
+    console.error('❌ Aggregate alert checking failed:', error)
+    throw error
+  }
+}
+
+// Check individual segment for alerts with deduplication
+async function checkSegmentForAlert(agg, forecast) {
+  const segmentKey = `${agg.segment}-${agg.day}`
+  const now = Date.now()
+  const lastAlertTime = lastAlertTimes.get(segmentKey)
+  const timeSinceLastAlert = lastAlertTime ? (now - lastAlertTime) / (1000 * 60) : Infinity
+
+  // Skip if we alerted for this segment recently
+  if (timeSinceLastAlert < DEDUPE_WINDOW_MINUTES) {
+    console.log(`⏰ Skipping alert for ${segmentKey} - last alert ${Math.round(timeSinceLastAlert)}min ago`)
+    return
+  }
+
+  const actual = agg.totalCount
+  const drop = (forecast - actual) / forecast
+
+  console.log(`📊 Segment check: ${segmentKey}`)
+  console.log(`  Actual: ${actual}, Forecast: ${forecast}, Drop: ${(drop * 100).toFixed(1)}%`)
+
+  // Check if we should send an alert
+  if (Math.abs(drop) > THRESHOLD) {
+    const isSpike = drop < 0 // Negative drop means actual > forecast (spike)
+    const alertType = isSpike ? 'spike' : 'drop'
+    const percentage = Math.abs(drop * 100).toFixed(0)
+
+    // Create unique alert ID for this segment
+    const alertId = `${alertType}-${segmentKey}-${percentage}-${Date.now()}`
+
+    console.log(`🚨 ${alertType.toUpperCase()} detected for ${segmentKey}: ${percentage}%`)
+
+    // Update last alert time
+    lastAlertTimes.set(segmentKey, now)
+
+    // Send alert (implement alert sending logic here)
+    await sendAlert({
+      id: alertId,
+      type: alertType,
+      segment: agg.segment,
+      day: agg.day,
+      actual,
+      forecast,
+      percentage,
+      timestamp: agg.timestamp
+    })
+  }
+}
+
+// Send alert to database and Slack
+async function sendAlert(alertData) {
+  try {
+    const { id, type, segment, day, actual, forecast, percentage, timestamp } = alertData
+
+    // Check if this alert already exists (additional deduplication)
+    const { data: existingAlert } = await supabase
+      .from('alerts')
+      .select('id')
+      .eq('id', id)
+      .single()
+
+    if (existingAlert) {
+      console.log('⚠️ Alert already exists, skipping:', id)
+      return
+    }
+
+    // Format the timestamp
+    const eventTime = new Date(timestamp)
+    const formattedTime = eventTime.toLocaleString('en-US', {
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: true,
+      month: 'numeric',
+      day: 'numeric',
+      year: 'numeric',
+      timeZoneName: 'short'
+    })
+
+    // Insert alert into database
+    const alertRecord = {
+      id,
+      type,
+      title: `Traffic ${type.toUpperCase()}: ${segment}`,
+      message: `${percentage}% ${type === 'spike' ? 'above' : 'below'} forecast (actual: ${actual}, forecast: ${forecast.toFixed(1)})`,
+      timestamp,
+      severity: percentage > 50 ? 'high' : percentage > 25 ? 'medium' : 'low',
+      data: {
+        actual,
+        forecast,
+        percentage,
+        segment,
+        day,
+        formattedTime,
+        threshold: THRESHOLD * 100
+      }
+    }
+
+    const { data: insertedAlert, error: insertError } = await supabase
+      .from('alerts')
+      .insert([alertRecord])
+      .select()
+      .single()
+
+    if (insertError) throw insertError
+
+    console.log('✅ Alert saved to database:', id)
+
+    // Send Slack notification if configured
+    if (SLACK_WEBHOOK) {
+      await sendSlackAlert(alertRecord)
+    }
+
+  } catch (error) {
+    console.error('❌ Failed to send alert:', error)
+  }
+}
+
+// Send Slack alert
+async function sendSlackAlert(alert) {
+  const emoji = alert.type === 'spike' ? '📈' : '📉'
+
+  const slackMessage = {
+    text: `${emoji} Alert: Traffic ${alert.type.toUpperCase()} detected!`,
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `*${emoji} Traffic ${alert.type.toUpperCase()} Alert*\n\nSegment: *${alert.data.segment}*\nDay: *${alert.data.day}*\nActual: *${alert.data.actual}*\nForecast: *${alert.data.forecast.toFixed(1)}*\nDifference: *${alert.data.percentage}% ${alert.type === 'spike' ? 'above' : 'below'} forecast*\n\nTime: ${alert.data.formattedTime}\nAlert ID: \`${alert.id}\``
+        }
+      }
+    ]
+  }
+
+  const slackResponse = await fetch(SLACK_WEBHOOK, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(slackMessage),
+    signal: AbortSignal.timeout(5000)
+  })
+
+  if (slackResponse.ok) {
+    console.log('✅ Slack alert sent successfully')
+  } else {
+    console.error('❌ Failed to send Slack alert:', slackResponse.status, slackResponse.statusText)
+  }
+}
 
 export const handler = async (event, context) => {
   // CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
       statusCode: 200,
-      headers: { 
+      headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'Content-Type',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
@@ -23,7 +311,13 @@ export const handler = async (event, context) => {
   }
 
   try {
-    console.log('🚨 Alerter function triggered')
+    const isScheduled = event.headers?.['x-schedule'] || event.queryStringParameters?.scheduled === 'true'
+    console.log(`🚨 Alerter function triggered${isScheduled ? ' (scheduled)' : ' (manual)'}`)
+
+    // Initialize Supabase Realtime subscription on first run
+    if (!realtimeSubscription) {
+      initializeRealtimeSubscription()
+    }
     console.log('🔍 Environment check:')
     console.log('  SLACK_WEBHOOK_URL:', SLACK_WEBHOOK ? '✅ Set' : '❌ Missing')
     console.log('  ALERT_THRESHOLD:', THRESHOLD)
@@ -47,255 +341,32 @@ export const handler = async (event, context) => {
       }
     }
 
-    // Get latest event to check for anomalies
-    console.log('📊 Fetching latest event data...')
-    
-    const { data: latest, error: fetchErr } = await supabase
-      .from('events')
-      .select('timestamp, count, event_type')
-      .order('timestamp', { ascending: false })
-      .limit(1)
+    // Use new privacy-compliant alert checking
+    console.log('🔒 Starting privacy-compliant alert checking...')
 
-    if (fetchErr) {
-      console.error('❌ Error fetching latest data:', fetchErr)
-      return {
-        statusCode: 500,
-        headers: { 'Access-Control-Allow-Origin': '*' },
-        body: JSON.stringify({ 
-          error: 'Failed to fetch latest data',
-          details: fetchErr.message,
-          code: fetchErr.code,
-          hint: fetchErr.hint
-        })
-      }
-    }
+    try {
+      // Check alerts using noisy aggregates (privacy-compliant)
+      await checkAlertsFromAggregates()
 
-    if (!latest || latest.length === 0) {
-      console.log('📭 No data available - no alerting needed')
       return {
         statusCode: 200,
         headers: { 'Access-Control-Allow-Origin': '*' },
-        body: JSON.stringify({ 
-          message: 'No data available',
-          dataPoints: 0 
-        })
-      }
-    }
-
-    const latestEvent = latest[0]
-    console.log('📋 Latest event data:', latestEvent)
-
-    // Get forecast from forecast function
-    console.log('🔮 Fetching forecast...')
-    const baseUrl = process.env.NETLIFY_URL || process.env.SITE_URL || 'https://getpythia.tech'
-    const forecastUrl = `${baseUrl}/.netlify/functions/get-forecast`
-    console.log('📍 Forecast URL:', forecastUrl)
-    
-    const forecastResponse = await fetch(forecastUrl, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      signal: AbortSignal.timeout(8000) // 8 second timeout
-    })
-    
-    if (!forecastResponse.ok) {
-      console.error('❌ Forecast API error:', forecastResponse.status, forecastResponse.statusText)
-      return {
-        statusCode: 500,
-        headers: { 'Access-Control-Allow-Origin': '*' },
-        body: JSON.stringify({ 
-          error: 'Failed to fetch forecast',
-          status: forecastResponse.status 
-        })
-      }
-    }
-
-    const forecastData = await forecastResponse.json()
-    console.log('🔮 Forecast data:', forecastData)
-
-    if (!forecastData.forecast || forecastData.forecast === 0) {
-      console.log('⚠️ No valid forecast available')
-      return {
-        statusCode: 200,
-        headers: { 'Access-Control-Allow-Origin': '*' },
-        body: JSON.stringify({ 
-          message: 'No valid forecast available',
-          forecast: forecastData 
-        })
-      }
-    }
-
-    const actual = latestEvent.count
-    const forecast = forecastData.forecast
-    const drop = (forecast - actual) / forecast
-
-    console.log('📊 Alert calculation:')
-    console.log('  Latest Event Count:', actual)
-    console.log('  Daily Forecast:', forecast)
-    console.log('  Drop percentage:', (drop * 100).toFixed(1) + '%')
-    console.log('  Threshold:', (THRESHOLD * 100).toFixed(1) + '%')
-
-    // Check if we should send an alert
-    if (Math.abs(drop) > THRESHOLD) {
-      const isSpike = drop < 0 // Negative drop means actual > forecast (spike)
-      const alertType = isSpike ? 'spike' : 'drop'
-      const emoji = isSpike ? '📈' : '📉'
-      const direction = isSpike ? 'above' : 'below'
-      const percentage = Math.abs(drop * 100).toFixed(0)
-
-      // Format the timestamp properly
-      const eventTime = new Date(latestEvent.timestamp)
-      const formattedTime = eventTime.toLocaleString('en-US', {
-        hour: 'numeric',
-        minute: 'numeric',
-        hour12: true,
-        month: 'numeric',
-        day: 'numeric',
-        year: 'numeric',
-        timeZoneName: 'short'
-      })
-
-      // Create unique alert ID to prevent duplicates
-      const today = new Date()
-      const dateStr = today.toISOString().split('T')[0]
-      const alertId = `${alertType}-${dateStr}-${percentage}`
-
-      // Check if this alert already exists
-      const { data: existingAlert } = await supabase
-        .from('alerts')
-        .select('id')
-        .eq('id', alertId)
-        .single()
-
-      if (existingAlert) {
-        console.log('⚠️ Alert already exists, skipping:', alertId)
-        return {
-          statusCode: 200,
-          headers: { 'Access-Control-Allow-Origin': '*' },
-          body: JSON.stringify({
-            alertExists: true,
-            alertId,
-            message: 'Alert already recorded'
-          })
-        }
-      }
-
-      // Insert alert into database
-      const alertData = {
-        id: alertId,
-        type: alertType,
-        title: `Daily Traffic ${alertType.toUpperCase()} Detected`,
-        message: `${percentage}% ${direction} daily forecast (actual: ${actual}, forecast: ${forecast.toFixed(1)})`,
-        timestamp: latestEvent.timestamp,
-        severity: percentage > 50 ? 'high' : percentage > 25 ? 'medium' : 'low',
-        data: {
-          actual,
-          forecast,
-          dropPercentage: percentage,
-          eventType: latestEvent.event_type,
-          formattedTime,
+        body: JSON.stringify({
+          message: 'Alert checking completed successfully',
+          realtimeEnabled: !!realtimeSubscription,
+          deduplicationWindow: DEDUPE_WINDOW_MINUTES,
           threshold: THRESHOLD * 100,
-          latestEventCount: actual,
-          eventTimestamp: latestEvent.timestamp
-        }
-      }
-
-      console.log('💾 Inserting alert into database:', alertData)
-
-      const { data: insertedAlert, error: insertError } = await supabase
-        .from('alerts')
-        .insert([alertData])
-        .select()
-        .single()
-
-      if (insertError) {
-        console.error('❌ Failed to insert alert:', insertError)
-        return {
-          statusCode: 500,
-          headers: { 'Access-Control-Allow-Origin': '*' },
-          body: JSON.stringify({
-            error: 'Failed to save alert',
-            details: insertError.message,
-            code: insertError.code,
-            hint: insertError.hint
-          })
-        }
-      }
-
-      console.log('✅ Alert saved to database:', insertedAlert)
-
-      // Send Slack notification if configured
-      if (SLACK_WEBHOOK) {
-        const slackMessage = {
-          text: `${emoji} Alert: Daily ${alertType.toUpperCase()} detected!`,
-          blocks: [
-            {
-              type: "section",
-                          text: {
-              type: "mrkdwn",
-              text: `*${emoji} Traffic ${alertType.toUpperCase()} Alert*\n\nLatest Event Count: *${actual}*\nDaily Forecast: *${forecast.toFixed(1)}*\nDifference: *${percentage}% ${direction} forecast*\n\nEvent Type: ${latestEvent.event_type}\nEvent Time: ${formattedTime}\nAlert ID: \`${alertId}\``
-            }
-            }
-          ]
-        }
-
-        console.log('🚨 Sending Slack alert:', alertType)
-
-        const slackResponse = await fetch(SLACK_WEBHOOK, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(slackMessage),
-          signal: AbortSignal.timeout(5000) // 5 second timeout
-        })
-
-        if (slackResponse.ok) {
-          console.log('✅ Slack alert sent successfully')
-        } else {
-          console.error('❌ Failed to send Slack alert:', slackResponse.status, slackResponse.statusText)
-        }
-      }
-
-      return {
-        statusCode: 200,
-        headers: { 'Access-Control-Allow-Origin': '*' },
-        body: JSON.stringify({
-          alertSent: true,
-          alertSaved: true,
-          alertId,
-          alertType,
-          actual,
-          forecast,
-          dropPercentage: percentage,
-          formattedTime,
-          slackSent: !!SLACK_WEBHOOK,
-          eventData: {
-            eventType: latestEvent.event_type,
-            eventCount: actual,
-            eventTime: latestEvent.timestamp
-          },
-          message: `${alertType} alert saved and ${SLACK_WEBHOOK ? 'sent to Slack' : 'Slack not configured'}`
+          segmentsTracked: lastAlertTimes.size
         })
       }
-    } else {
-      console.log('✅ No alert needed - within threshold')
+    } catch (alertError) {
+      console.error('❌ Alert checking failed:', alertError)
       return {
-        statusCode: 200,
+        statusCode: 500,
         headers: { 'Access-Control-Allow-Origin': '*' },
         body: JSON.stringify({
-          alertSent: false,
-          actual,
-          forecast,
-          dropPercentage: (Math.abs(drop) * 100).toFixed(1),
-          threshold: (THRESHOLD * 100).toFixed(1),
-                  eventData: {
-          eventType: latestEvent.event_type,
-          eventCount: actual,
-          eventTime: latestEvent.timestamp
-        },
-        message: 'No alert needed - within threshold'
+          error: 'Alert checking failed',
+          details: alertError.message
         })
       }
     }

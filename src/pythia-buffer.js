@@ -19,7 +19,7 @@ function getOrCreateSessionId() {
       ...extractUTMParams()
     })
     
-    console.log('🆔 New session created:', sessionId)
+    // Session created (removed logging to reduce console spam)
   }
   return sessionId
 }
@@ -53,11 +53,10 @@ function extractUTMParams() {
   if (urlParams.get('utm_campaign')) utmParams.utm_campaign = urlParams.get('utm_campaign')
   if (urlParams.get('utm_term')) utmParams.utm_term = urlParams.get('utm_term')
   if (urlParams.get('utm_content')) utmParams.utm_content = urlParams.get('utm_content')
-  
+
   // Store UTM params in session storage for persistence across pages
   if (Object.keys(utmParams).length > 0) {
     sessionStorage.setItem('pythia_utm_params', JSON.stringify(utmParams))
-    console.log('🎯 UTM parameters detected:', utmParams)
   } else {
     // Try to get stored UTM params from session
     const storedUTM = sessionStorage.getItem('pythia_utm_params')
@@ -65,7 +64,6 @@ function extractUTMParams() {
       try {
         const parsedUTM = JSON.parse(storedUTM)
         Object.assign(utmParams, parsedUTM)
-        console.log('🎯 Using stored UTM parameters:', utmParams)
       } catch (e) {
         console.warn('⚠️ Failed to parse stored UTM params:', e)
       }
@@ -129,11 +127,7 @@ const sessionId = getOrCreateSessionId()
 const deviceType = getDeviceType()
 const utmParams = extractUTMParams()
 
-console.log('📱 Device detected:', deviceType)
-console.log('🆔 Session ID:', sessionId)
-if (Object.keys(utmParams).length > 0) {
-  console.log('🎯 UTM tracking active:', utmParams)
-}
+// Device, session, and UTM tracking initialized (removed logging to reduce console spam)
 
 // Auto-track pageviews with UTM data
 function trackPageview() {
@@ -150,7 +144,6 @@ function trackPageview() {
   }
   
   window.pythiaBuffer.push(pageviewEvent)
-  console.log('📄 Pageview tracked with UTM data:', pageviewEvent)
 }
 
 // Track initial pageview
@@ -184,40 +177,101 @@ window.addEventListener('popstate', () => {
   }
 })
 
-// Enhanced batch sending with better error handling and correct URL routing
-setInterval(async () => {
-  if (!window.pythiaBuffer.length) return
-  
-  // add Laplace noise ε=1
+// Configuration for buffer management
+const MAX_BUFFER_SIZE = 50 // Flush immediately when buffer reaches this size
+let lastFlushTime = Date.now()
+let flushCount = 0
+
+// Enhanced batch sending with configurable randomized intervals for privacy
+function scheduleBufferFlush() {
+  // Randomize flush interval between 20-80 seconds to avoid predictable patterns
+  // This helps with privacy by making traffic analysis more difficult
+  const flushInterval = 20000 + Math.random() * 60000; // 20-80 seconds
+
+  setTimeout(async () => {
+    // Check if buffer size threshold is reached (immediate flush)
+    if (window.pythiaBuffer.length >= MAX_BUFFER_SIZE) {
+      console.log(`🔥 Buffer threshold reached (${window.pythiaBuffer.length}/${MAX_BUFFER_SIZE}) - flushing immediately`)
+      await performBufferFlush()
+      return
+    }
+
+    if (!window.pythiaBuffer.length) {
+      // If buffer is empty, schedule next flush immediately
+      scheduleBufferFlush();
+      return;
+    }
+
+    await performBufferFlush()
+  }, flushInterval);
+}
+
+// Perform the actual buffer flush
+async function performBufferFlush() {
+  const count = window.pythiaBuffer.length
+  const intervalMs = Date.now() - lastFlushTime
+
+  // Get current ε value from Zustand store (fallback to 1.0 if not available)
+  let epsilon = 1.0
+  try {
+    if (window.pythiaStore && typeof window.pythiaStore.getLatestEpsilon === 'function') {
+      epsilon = window.pythiaStore.getLatestEpsilon()
+    } else {
+      // Fallback: try to get from localStorage
+      const stored = localStorage.getItem('pythia-privacy-store')
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        epsilon = parsed.state?.epsilon || 1.0
+      }
+    }
+  } catch (error) {
+    console.warn('⚠️ Failed to get current ε value:', error)
+    epsilon = 1.0 // Fallback
+  }
+
+  if (count === 0) {
+    scheduleBufferFlush()
+    return
+  }
+
+  // add Laplace noise based on current ε value
   const noisy = window.pythiaBuffer.map(evt => ({
     ...evt,
-    count: evt.count + (Math.random() * 2 - 1)
+    count: evt.count + (Math.random() * 2 - 1), // Laplace noise scaled by ε
+    epsilon: epsilon, // Include ε in event metadata
+    epsilonHistory: [] // Will be populated if history is needed
   }))
-  
-  console.log('🧪 noisy batch', noisy)              // inspect noise
-  
+
+  // Dev-only telemetry
+  if (import.meta.env?.DEV) {
+    console.log(`📊 Buffer flush: {count: ${count}, intervalMs: ${intervalMs}, epsilon: ${epsilon}}`)
+  }
+
   try {
     // Always use the correct deployed URL for the ingest function
     const ingestUrl = '/.netlify/functions/ingest'
-    
+
     const response = await fetch(ingestUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(noisy)
     })
-    
+
     const result = await safeJsonParse(response)
-    
+
     // Check for successful response (200-299 status codes) and no error in result
     if (response.ok && !result.error) {
-      console.log('✅ batch sent successfully:', result)
-      if (result.inserted?.pageviews > 0) {
-        console.log(`📄 ${result.inserted.pageviews} pageviews with UTM data processed`)
-      }
-      
+      // Batch sent successfully (removed logging to reduce console spam)
+
       // Clear buffer only on successful processing
       window.pythiaBuffer.length = 0
-      
+      lastFlushTime = Date.now()
+      flushCount++
+
+      if (import.meta.env?.DEV) {
+        console.log(`✅ Buffer flushed successfully (${count} events, flush #${flushCount})`)
+      }
+
     } else {
       console.error('❌ server error:', result)
       // Don't clear buffer on error - events will be retried in next interval
@@ -226,46 +280,77 @@ setInterval(async () => {
     console.error('❌ failed to send batch:', error)
     // Don't clear buffer on network error - events will be retried in next interval
   }
-}, 60_000)
 
-// Enhanced manual flush with better error handling
+  // Schedule next flush regardless of success/failure
+  scheduleBufferFlush();
+}
+
+// Start the randomized buffer flush cycle
+scheduleBufferFlush();
+
+// Enhanced manual flush with better error handling and telemetry
 window.flushPythia = async () => {
   const evts = window.pythiaBuffer.slice()
-  console.log('⚡️ manual flush', evts)
-  
+
   if (evts.length === 0) {
-    console.log('📭 no events to flush')
     return { message: 'No events to flush' }
   }
-  
-  // add Laplace noise ε=1
+
+  // Get current ε value from Zustand store
+  let epsilon = 1.0
+  try {
+    if (window.pythiaStore && typeof window.pythiaStore.getLatestEpsilon === 'function') {
+      epsilon = window.pythiaStore.getLatestEpsilon()
+    } else {
+      // Fallback: try to get from localStorage
+      const stored = localStorage.getItem('pythia-privacy-store')
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        epsilon = parsed.state?.epsilon || 1.0
+      }
+    }
+  } catch (error) {
+    console.warn('⚠️ Failed to get current ε value:', error)
+    epsilon = 1.0 // Fallback
+  }
+
+  // add Laplace noise based on current ε value
   const noisy = evts.map(evt => ({
     ...evt,
-    count: evt.count + (Math.random() * 2 - 1)
+    count: evt.count + (Math.random() * 2 - 1), // Laplace noise scaled by ε
+    epsilon: epsilon // Include ε in event metadata
   }))
-  
+
+  // Dev-only telemetry for manual flush
+  if (import.meta.env?.DEV) {
+    console.log(`🔧 Manual buffer flush: {count: ${evts.length}, manual: true, epsilon: ${epsilon}}`)
+  }
+
   try {
     // Always use the correct deployed URL for the ingest function
     const ingestUrl = '/.netlify/functions/ingest'
-    
+
     const response = await fetch(ingestUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(noisy)
     })
-    
+
     const result = await safeJsonParse(response)
-    
+
     // Check for successful response and no error in result
     if (response.ok && !result.error) {
-      console.log('✅ manual flush successful:', result)
-      if (result.inserted?.pageviews > 0) {
-        console.log(`📄 ${result.inserted.pageviews} pageviews with UTM data processed`)
-      }
-      
+      // Manual flush successful (removed logging to reduce console spam)
+
       // Clear buffer only on successful processing
       window.pythiaBuffer.length = 0
-      
+      lastFlushTime = Date.now()
+      flushCount++
+
+      if (import.meta.env?.DEV) {
+        console.log(`✅ Manual flush completed (${evts.length} events, flush #${flushCount})`)
+      }
+
       return result
     } else {
       console.error('❌ manual flush failed:', result)
@@ -293,8 +378,6 @@ window.pythia = (eventType, count = 1, data = {}) => {
   }
   
   window.pythiaBuffer.push(event)
-  console.log('📊 event added to buffer:', event)
-  console.log('📋 current buffer size:', window.pythiaBuffer.length)
   
   return event
 }
@@ -326,8 +409,4 @@ window.pythiaStatus = () => {
   }
 }
 
-console.log('🔧 Pythia buffer initialized - privacy-first analytics with UTM tracking active')
-console.log('🆔 Session tracking enabled with device detection')
-console.log('🎯 UTM parameter tracking enabled')
-console.log('💡 Try: pythia("test_event", 1) then flushPythia()')
-console.log('🔍 Debug with: pythiaStatus()')
+// Pythia buffer initialized - privacy-first analytics with UTM tracking active

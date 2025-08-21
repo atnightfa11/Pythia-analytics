@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   BarChart3,
@@ -25,7 +25,8 @@ import {
   Eye
 } from 'lucide-react';
 import { Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell, ComposedChart } from 'recharts';
-import { PrivacyControls } from './PrivacyControls';
+import { PrivacyControls, usePrivacyStore } from './PrivacyControls';
+import { CONFIG } from '../env-config.js';
 
 // Types for our live data
 interface TimeSeriesData {
@@ -261,6 +262,32 @@ const AlertCard = ({ alert, onAcknowledge }: { alert: Alert; onAcknowledge: (id:
   );
 };
 
+// Exponential backoff retry function
+const retryWithBackoff = async <T,>(
+  fn: () => Promise<T>,
+  maxAttempts: number = CONFIG.MAX_RETRY_ATTEMPTS,
+  baseDelay: number = CONFIG.RETRY_BASE_DELAY
+): Promise<T> => {
+  let lastError: Error | unknown;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error as Error;
+
+      if (attempt === maxAttempts - 1) {
+        throw lastError;
+      }
+
+      // Exponential backoff: baseDelay * 2^attempt + jitter
+      const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 1000;
+      console.log(`🔄 Retry ${attempt + 1}/${maxAttempts} after ${delay}ms delay`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+};
+
 export function Dashboard() {
   const [dateRange, setDateRange] = useState(28);
   const [timeSeries, setTimeSeries] = useState<TimeSeriesData[]>([]);
@@ -278,9 +305,15 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [alertsLoading, setAlertsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [liveLastUpdated, setLiveLastUpdated] = useState<Date | null>(null);
   const [isOnline, setIsOnline] = useState(true);
-  const [epsilon, setEpsilon] = useState(1.0);
+
+  // Use Zustand store for epsilon
+  const { epsilon, setEpsilon } = usePrivacyStore();
+
+  // Refs for cleanup
+  const mainIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const liveIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   // 🆕 Metrics state for Plausible-style KPIs
   const [metrics, setMetrics] = useState<{
@@ -297,6 +330,57 @@ export function Dashboard() {
     { name: 'Tablet', value: 15, color: BRAND_COLORS.accent },
   ]);
 
+  // Create memoized fetch functions with retry logic
+  const fetchLiveVisitors = useCallback(async () => {
+    return await retryWithBackoff(async () => {
+      const response = await fetch('/.netlify/functions/get-live-visitors?minutes=5');
+      if (!response.ok) {
+        throw new Error(`Live visitors API error: ${response.status}`);
+      }
+      return await response.json();
+    });
+  }, []);
+
+  const fetchEvents = useCallback(async () => {
+    return await retryWithBackoff(async () => {
+      const response = await fetch(`/.netlify/functions/get-events?days=${dateRange}`);
+      if (!response.ok) {
+        throw new Error(`Events API error: ${response.status}`);
+      }
+      return await response.json();
+    });
+  }, [dateRange]);
+
+  const fetchForecast = useCallback(async () => {
+    return await retryWithBackoff(async () => {
+      const response = await fetch('/.netlify/functions/forecast');
+      if (!response.ok) {
+        throw new Error(`Forecast API error: ${response.status}`);
+      }
+      return await response.json();
+    });
+  }, []);
+
+  const fetchAlerts = useCallback(async () => {
+    return await retryWithBackoff(async () => {
+      const response = await fetch('/.netlify/functions/get-alerts');
+      if (!response.ok) {
+        throw new Error(`Alerts API error: ${response.status}`);
+      }
+      return await response.json();
+    });
+  }, []);
+
+  const fetchMetrics = useCallback(async () => {
+    return await retryWithBackoff(async () => {
+      const response = await fetch(`/.netlify/functions/get-metrics?days=${dateRange}`);
+      if (!response.ok) {
+        throw new Error(`Metrics API error: ${response.status}`);
+      }
+      return await response.json();
+    });
+  }, [dateRange]);
+
   // Data fetching as requested
   useEffect(() => {
     const loadData = async () => {
@@ -304,14 +388,8 @@ export function Dashboard() {
         setLoading(true);
         setError(null);
 
-        console.log('📊 Loading dashboard data...');
-
         // Historical & real-time events
-        const eventsResponse = await fetch(`/.netlify/functions/get-events?days=${dateRange}`);
-        if (!eventsResponse.ok) {
-          throw new Error(`Events API error: ${eventsResponse.status}`);
-        }
-        const eventsData = await eventsResponse.json();
+        const eventsData = await fetchEvents();
         
         // Transform time series data for charts - using events to match forecast scale
         const transformedTimeSeries = eventsData.timeSeries?.map((item: EventsDataItem) => ({
@@ -325,8 +403,6 @@ export function Dashboard() {
           isSpike: item.count > 200 // Base spike detection on event count
         })) || [];
 
-        console.log(`📊 Analytics data: ${transformedTimeSeries.length} days, max events: ${Math.max(...transformedTimeSeries.map((item: TimeSeriesData) => item.count)).toLocaleString()}`);
-        
         setTimeSeries(transformedTimeSeries);
         
         // Set realtime data for Recent Activity chart
@@ -341,34 +417,28 @@ export function Dashboard() {
         
         // Get live visitor count from dedicated endpoint
         try {
-          const liveResponse = await fetch('/.netlify/functions/get-live-visitors?minutes=5');
-          if (liveResponse.ok) {
-            const liveData = await liveResponse.json();
-            setLiveCount(liveData.liveVisitors || 0);
-            console.log(`👥 Live visitors: ${liveData.liveVisitors} (last 5 minutes)`);
-          }
+          const liveData = await fetchLiveVisitors();
+          setLiveCount(liveData.liveVisitors || 0);
+          setLiveLastUpdated(new Date());
         } catch (liveError) {
           console.warn('⚠️ Live visitors fetch failed:', liveError);
           setLiveCount(0);
         }
-        
+
         // 🎯 Set conversion data from API response
         if (eventsData.conversions) {
           setConversions(eventsData.conversions);
-          console.log(`🎯 Conversions loaded: ${eventsData.conversions.conversionRate}% rate`);
         }
 
         // 📊 Set unique visitors from summary data
         if (eventsData.summary) {
           setTotalUniqueVisitors(eventsData.summary.totalVisitors || 0);
-          console.log(`👥 Unique visitors: ${eventsData.summary.totalVisitors}`);
         }
 
-        // Forecast + accuracy - use fresh forecast instead of cached
-        try {
-          const forecastResponse = await fetch('/.netlify/functions/forecast');
-          if (forecastResponse.ok) {
-            const forecastData = await forecastResponse.json();
+        // Process forecast data
+        await (async () => {
+          try {
+            const forecastData = await fetchForecast();
             setForecast({
               forecast: forecastData.forecast || 0,
               mape: forecastData.mape || 15,
@@ -376,17 +446,17 @@ export function Dashboard() {
               model: forecastData.metadata?.algorithm || 'simplified-prophet'
             });
             setMape(forecastData.mape);
-            
+
             // Create combined dataset with full forecast line (historical + future)
             const historicalMap = new Map();
             transformedTimeSeries.forEach((pt: TimeSeriesData) => historicalMap.set(pt.date, pt));
 
             const combinedData = [...transformedTimeSeries];
-            
+
             // Generate forecast baseline from current forecast
             const baseForecast = forecastData.forecast || 150;
             const forecastVariation = 0.15; // 15% variation
-            
+
             // Add historical forecast line (simulated model predictions)
             combinedData.forEach((item, index) => {
               if (item.date) {
@@ -394,7 +464,7 @@ export function Dashboard() {
                 const trendFactor = 1 + (index * 0.01); // Slight upward trend
                 const randomFactor = 0.9 + (Math.sin(index * 0.5) * forecastVariation);
                 const historicalForecast = baseForecast * trendFactor * randomFactor;
-                
+
                 item.yhat = historicalForecast;
                 item.yhat_lower = historicalForecast * 0.85;
                 item.yhat_upper = historicalForecast * 1.15;
@@ -427,37 +497,34 @@ export function Dashboard() {
             });
 
             // Sort by date to ensure chronological order
-            combinedData.sort((a, b) => 
+            combinedData.sort((a, b) =>
               new Date(a.date || a.hour).getTime() - new Date(b.date || b.hour).getTime()
             );
 
-            console.log("Chart Data", combinedData);
             setTsWithForecast(combinedData);
+          } catch (forecastError) {
+            console.warn('⚠️ Forecast fetch failed:', forecastError);
+            setForecast(null);
+            setTsWithForecast(transformedTimeSeries);
           }
-        } catch (forecastError) {
-          console.warn('⚠️ Forecast fetch failed:', forecastError);
-          setForecast(null);
-          setTsWithForecast(transformedTimeSeries);
-        }
+        })();
 
-        // Smart alerts with better error handling
-        try {
-          const alertsResponse = await fetch('/.netlify/functions/get-alerts');
-          if (alertsResponse.ok) {
-            const alertsData = await alertsResponse.json();
+        // Process alerts data
+        await (async () => {
+          try {
+            const alertsData = await fetchAlerts();
             setAlerts(alertsData.alerts || []);
+          } catch (alertsError) {
+            console.warn('⚠️ Alerts fetch failed:', alertsError);
+            setAlerts([]);
           }
-        } catch (alertsError) {
-          console.warn('⚠️ Alerts fetch failed:', alertsError);
-          setAlerts([]);
-        }
+        })();
 
-        // 📊 Fetch comprehensive metrics data (includes device, sessions, bounce rate)
-        try {
-          const metricsResponse = await fetch(`/.netlify/functions/get-metrics?days=${dateRange}`);
-          if (metricsResponse.ok) {
-            const metricsResult = await metricsResponse.json();
-            
+        // Process metrics data
+        await (async () => {
+          try {
+            const metricsResult = await fetchMetrics();
+
             // 📱 Set device data from metrics response
             if (metricsResult.deviceBreakdown) {
               const deviceBreakdown = metricsResult.deviceBreakdown as Array<{ device: string; count: number }>;
@@ -468,9 +535,8 @@ export function Dashboard() {
                 color: [BRAND_COLORS.primary, BRAND_COLORS.secondary, BRAND_COLORS.accent][index] || BRAND_COLORS.primary
               }));
               setDeviceData(realDeviceData);
-              console.log('📱 Real device data loaded:', realDeviceData);
             }
-            
+
             // 🆕 Set Plausible-style metrics (unique visitors, bounce rate, session trend)
             if (metricsResult.metrics) {
               setMetrics({
@@ -480,15 +546,12 @@ export function Dashboard() {
                 sessionTrend: parseFloat(metricsResult.metrics.sessionTrend) || 0
               });
               setTotalVisits(metricsResult.metrics.totalSessions || 0);
-              console.log('📊 Plausible-style metrics loaded:', metricsResult.metrics);
             }
+          } catch (metricsError) {
+            console.warn('⚠️ Metrics data fetch failed, using defaults:', metricsError);
           }
-        } catch (metricsError) {
-          console.warn('⚠️ Metrics data fetch failed, using defaults:', metricsError);
-        }
+        })();
 
-        console.log('✅ Data loaded successfully');
-        setLastUpdated(new Date());
         setIsOnline(true);
 
       } catch (err) {
@@ -504,50 +567,63 @@ export function Dashboard() {
     loadData();
   }, [dateRange]);
 
-  // Auto-refresh every 2 minutes for main data, every 30 seconds for live visitors
+  // Auto-refresh with configurable intervals and exponential backoff
   useEffect(() => {
-    // Main data refresh every 2 minutes
-    const mainInterval = setInterval(() => {
-      fetch(`/.netlify/functions/get-events?days=${dateRange}`)
-        .then(r => r.json())
-        .then(data => {
-          const transformedTimeSeries = data.timeSeries?.map((item: EventsDataItem) => ({
-            hour: item.date,
-            count: item.count,
-            date: item.date,
-            visitors: item.visitors,
-            pageviews: item.events,
-            events: item.events
-          })) || [];
-          
-          setTimeSeries(transformedTimeSeries);
-          setLastUpdated(new Date());
-        })
-        .catch(err => console.warn('Main data auto-refresh failed:', err));
-    }, 2 * 60 * 1000);
+        // Main data refresh with configurable interval
+    const mainInterval = setInterval(async () => {
+      try {
+        const data = await fetchEvents();
+        const transformedTimeSeries = data.timeSeries?.map((item: EventsDataItem) => ({
+          hour: item.date,
+          count: item.count,
+          date: item.date,
+          visitors: item.visitors,
+          pageviews: item.events,
+          events: item.events
+        })) || [];
 
-    // Live visitors refresh every 30 seconds
-    const liveInterval = setInterval(() => {
-      fetch('/.netlify/functions/get-live-visitors?minutes=5')
-        .then(r => r.json())
-        .then(data => {
-          setLiveCount(data.liveVisitors || 0);
-          console.log(`🔄 Live visitors updated: ${data.liveVisitors}`);
-        })
-        .catch(err => console.warn('Live visitors auto-refresh failed:', err));
-    }, 30 * 1000);
-    
+        setTimeSeries(transformedTimeSeries);
+      } catch {
+        // Silent failure for auto-refresh to avoid console spam
+      }
+    }, CONFIG.MAIN_POLL_MS);
+
+    mainIntervalRef.current = mainInterval;
+
     return () => {
-      clearInterval(mainInterval);
-      clearInterval(liveInterval);
+      if (mainIntervalRef.current) {
+        clearInterval(mainIntervalRef.current);
+        mainIntervalRef.current = null;
+      }
     };
-  }, [dateRange]);
+  }, [dateRange, fetchEvents]);
+
+  // Live visitors refresh with 5-second interval and exponential backoff
+  useEffect(() => {
+    const liveInterval = setInterval(async () => {
+      try {
+        const data = await fetchLiveVisitors();
+        setLiveCount(data.liveVisitors || 0);
+        setLiveLastUpdated(new Date());
+      } catch {
+        // Silent failure for auto-refresh to avoid console spam
+      }
+    }, CONFIG.LIVE_POLL_MS);
+
+    liveIntervalRef.current = liveInterval;
+
+    return () => {
+      if (liveIntervalRef.current) {
+        clearInterval(liveIntervalRef.current);
+        liveIntervalRef.current = null;
+      }
+    };
+  }, [fetchLiveVisitors]);
 
   // Test function for analytics
   const testAnalytics = () => {
     if (typeof window.pythia === 'function') {
       window.pythia('dashboard_test', 1, { source: 'dashboard_button' });
-      console.log('🧪 Test event sent!');
     } else {
       console.error('❌ Pythia not available');
     }
@@ -559,7 +635,6 @@ export function Dashboard() {
       const conversionTypes = ['signup', 'purchase', 'subscribe'];
       const randomType = conversionTypes[Math.floor(Math.random() * conversionTypes.length)];
       window.pythia(randomType, 1, { source: 'dashboard_test', value: Math.floor(Math.random() * 100) + 10 });
-      console.log(`🎯 Test conversion sent: ${randomType}`);
     } else {
       console.error('❌ Pythia not available');
     }
@@ -567,8 +642,7 @@ export function Dashboard() {
 
   const flushTest = async () => {
     if (typeof window.flushPythia === 'function') {
-      const result = await window.flushPythia();
-      console.log('🚀 Flush result:', result);
+      await window.flushPythia(); // Result not needed, just ensure flush completes
       // Refresh data after flush
       setTimeout(() => {
         window.location.reload();
@@ -581,42 +655,37 @@ export function Dashboard() {
   // Handle alert acknowledgment
   const handleAcknowledgeAlert = async (alertId: string, acknowledged: boolean = true) => {
     try {
-      console.log(`🔄 ${acknowledged ? 'Acknowledging' : 'Unacknowledging'} alert:`, alertId);
-      
       // Optimistic update - update UI immediately
-      setAlerts(prev => prev.map(alert => 
+      setAlerts(prev => prev.map(alert =>
         alert.id === alertId ? { ...alert, acknowledged } : alert
       ));
-      
+
       const response = await fetch('/.netlify/functions/acknowledge-alert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ alertId, acknowledged })
       });
-      
-      if (response.ok) {
-        const result = await response.json();
-        console.log(`✅ Alert ${acknowledged ? 'acknowledged' : 'unacknowledged'} successfully:`, result);
-      } else {
+
+      if (!response.ok) {
         // Revert optimistic update on failure
-        setAlerts(prev => prev.map(alert => 
+        setAlerts(prev => prev.map(alert =>
           alert.id === alertId ? { ...alert, acknowledged: !acknowledged } : alert
         ));
-        
+
         const errorData = await response.json();
         console.error('❌ Failed to acknowledge alert:', errorData);
-        
+
         // Show user feedback
         alert(`Failed to ${acknowledged ? 'acknowledge' : 'unacknowledge'} alert: ${errorData.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('❌ Error acknowledging alert:', error);
-      
+
       // Revert optimistic update on error
-      setAlerts(prev => prev.map(alert => 
+      setAlerts(prev => prev.map(alert =>
         alert.id === alertId ? { ...alert, acknowledged: !acknowledged } : alert
       ));
-      
+
       // Show user feedback
       alert(`Network error: Failed to ${acknowledged ? 'acknowledge' : 'unacknowledge'} alert`);
     }
@@ -625,18 +694,7 @@ export function Dashboard() {
   // Handle epsilon change
   const handleEpsilonChange = (newEpsilon: number) => {
     setEpsilon(newEpsilon);
-    console.log(`🔒 Privacy epsilon updated to: ${newEpsilon}`);
   };
-
-
-
-  // Load epsilon from localStorage on mount
-  useEffect(() => {
-    const savedEpsilon = localStorage.getItem('pythia_epsilon');
-    if (savedEpsilon) {
-      setEpsilon(parseFloat(savedEpsilon));
-    }
-  }, []);
 
   // Custom tooltip formatter for charts
   const formatTooltipValue = (value: unknown, name: string): [string, string] => {
@@ -744,6 +802,16 @@ export function Dashboard() {
               <div className="text-right">
                 <div className="text-lg font-bold text-emerald-200">{liveCount.toLocaleString()}</div>
                 <div className="text-xs text-emerald-400">visitors now</div>
+                {liveLastUpdated && (
+                  <div className="text-xs text-emerald-500">
+                    Last updated: {liveLastUpdated.toLocaleTimeString('en-US', {
+                      hour12: false,
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit'
+                    })}
+                  </div>
+                )}
               </div>
             </div>
             <button
@@ -775,8 +843,8 @@ export function Dashboard() {
                 <p className="text-sm font-medium text-slate-100">Privacy-First Analytics Active</p>
                 <p className="text-xs text-slate-400">
                   Session tracking • Device detection • Differential privacy (ε = {epsilon}) • No cookies
-                  {lastUpdated && (
-                    <span className="ml-2">• Last updated: {lastUpdated.toLocaleTimeString('en-US', { hour12: false })}</span>
+                  {liveLastUpdated && (
+                    <span className="ml-2">• Live visitors last updated: {liveLastUpdated.toLocaleTimeString('en-US', { hour12: false })}</span>
                   )}
                 </p>
               </div>

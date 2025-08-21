@@ -32,12 +32,36 @@ export const handler = async (event) => {
 
   const supabase = createClient(supabaseUrl, supabaseKey)
 
+  // Check for force refresh parameter
+  const { force } = event.queryStringParameters || {}
+  const shouldForceRefresh = force === 'true'
+  if (shouldForceRefresh) {
+    console.log('🔄 Force refresh requested - bypassing cache')
+  }
+
+  // Get current events count for cache validation
+  let currentEventsCount = 0
+  try {
+    const { data: eventsCountData, error: countError } = await supabase
+      .from('events')
+      .select('*', { count: 'exact', head: true })
+
+    if (!countError && eventsCountData !== null) {
+      currentEventsCount = eventsCountData
+    }
+  } catch (countErr) {
+    console.warn('⚠️ Events count lookup failed:', countErr)
+    // Don't fail - just log and continue with 0
+  }
+
+  console.log(`📊 Current events count: ${currentEventsCount}`)
+
   // Try to fetch latest cached forecast (with robust error handling)
   let latest = null
   try {
     const { data, error } = await supabase
       .from('forecasts')
-      .select('forecast,mape,generated_at,future')
+      .select('forecast,mape,generated_at,future,events_count_at_generation,model_version')
       .order('generated_at', { ascending: false })
       .limit(1)
       .single()
@@ -46,8 +70,14 @@ export const handler = async (event) => {
       latest = data
       const ageMs = Date.now() - new Date(latest.generated_at).getTime()
       const FIFTEEN_MIN = 15 * 60 * 1000  // 15 minute cache
-      if (ageMs < FIFTEEN_MIN) {
-        console.log('📋 Returning cached forecast')
+
+      // Cache is valid if: not forcing refresh AND age < 15min AND events count matches
+      const cacheIsValid = !shouldForceRefresh &&
+                          ageMs < FIFTEEN_MIN &&
+                          latest.events_count_at_generation === currentEventsCount
+
+      if (cacheIsValid) {
+        console.log('📋 Returning cached forecast (valid cache)')
         return {
           statusCode: 200,
           headers: { 'Access-Control-Allow-Origin': '*' },
@@ -57,9 +87,20 @@ export const handler = async (event) => {
             generatedAt: latest.generated_at,
             future: latest.future || [],
             cached: true,
-            ageMinutes: Math.floor(ageMs / 1000 / 60)
+            ageMinutes: Math.floor(ageMs / 1000 / 60),
+            eventsCountAtGeneration: latest.events_count_at_generation,
+            currentEventsCount: currentEventsCount,
+            modelVersion: latest.model_version
           })
         }
+      } else {
+        const reasons = []
+        if (shouldForceRefresh) reasons.push('force refresh requested')
+        if (ageMs >= FIFTEEN_MIN) reasons.push(`cache too old (${Math.floor(ageMs / 1000 / 60)}min)`)
+        if (latest.events_count_at_generation !== currentEventsCount) {
+          reasons.push(`events count changed (${latest.events_count_at_generation} → ${currentEventsCount})`)
+        }
+        console.log(`📋 Cache invalid: ${reasons.join(', ')}`)
       }
     }
   } catch (cacheErr) {
@@ -179,6 +220,9 @@ export const handler = async (event) => {
           generatedAt: latest.generated_at,
           future: futureData,
           cached: true,
+          eventsCountAtGeneration: latest.events_count_at_generation,
+          currentEventsCount: currentEventsCount,
+          modelVersion: latest.model_version,
           metadata: {
             algorithm: 'simplified-prophet',
             source: 'cached-with-generated-future'
@@ -234,13 +278,16 @@ export const handler = async (event) => {
         forecast: forecastData.forecast,
         mape: forecastData.mape,
         future: forecastData.future,
-        generated_at: new Date().toISOString()
+        generated_at: new Date().toISOString(),
+        events_count_at_generation: currentEventsCount,
+        model_version: forecastData.metadata?.modelVersion || '1.0'
       })
       .select()
       .single()
 
     if (insertError) throw insertError
     newEntry = data
+    console.log('💾 Stored new forecast with events_count:', currentEventsCount)
   } catch (dbErr) {
     console.error('❌ Error storing forecast:', dbErr)
     // Log but don't fail
