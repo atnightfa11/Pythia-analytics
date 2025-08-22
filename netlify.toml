@@ -6,30 +6,29 @@ command = "npx vite build"
 [build.environment]
 NODE_VERSION = "18"
 
-# Supabase Configuration (REQUIRED)
-SUPABASE_URL = "your_supabase_project_url"
-SUPABASE_SERVICE_ROLE_KEY = "your_supabase_service_role_key"
-SUPABASE_ANON_KEY = "your_supabase_anon_key"
+# Environment variables should be set in Netlify Dashboard → Site Configuration → Environment Variables
+# DO NOT include actual secret values in this file - they will be detected by Netlify's secrets scanner
 
-# Netlify Environment Detection
-NETLIFY = "true"
+# Required for Functions (set these in Netlify environment variables):
+# SUPABASE_URL = "your_supabase_project_url"
+# SUPABASE_SERVICE_ROLE_KEY = "your_supabase_service_role_key"
+# SUPABASE_ANON_KEY = "your_supabase_anon_key"
+# NETLIFY = "true"
+# SITE_URL = "https://your-site-name.netlify.app"
 
-# Alert Configuration
-ALERT_THRESHOLD = "0.2"
-NETLIFY_ALERT_POLL_MS = "30000"
-SLACK_WEBHOOK_URL = "your_slack_webhook_url"
+# Required for Client-side (set these in Netlify environment variables):
+# VITE_SUPABASE_URL = "your_supabase_project_url"
+# VITE_SUPABASE_ANON_KEY = "your_supabase_anon_key"
 
-# Forecast Configuration
-PYTHON_SERVICE_URL = "https://forecasting-service.fly.dev"
-FORECAST_LOOKBACK_DAYS = "60"
-FORECAST_HORIZON_DAYS = "30"
+# Optional Alert Configuration (set in Netlify environment variables):
+# NETLIFY_ALERT_POLL_MS = "30000"
+# ALERT_THRESHOLD = "0.2"
+# SLACK_WEBHOOK_URL = "your_slack_webhook_url"
 
-# Site Configuration
-SITE_URL = "https://your-site-name.netlify.app"
-
-# Vite Environment Variables (for client-side)
-VITE_SUPABASE_URL = "your_supabase_project_url"
-VITE_SUPABASE_ANON_KEY = "your_supabase_anon_key"
+# Optional Forecast Configuration (set in Netlify environment variables):
+# PYTHON_SERVICE_URL = "https://forecasting-service.fly.dev"
+# FORECAST_LOOKBACK_DAYS = "60"
+# FORECAST_HORIZON_DAYS = "30"
 
 [[redirects]]
 from = "/*"
