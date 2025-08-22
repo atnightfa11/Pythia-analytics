@@ -24,11 +24,11 @@ export const handler = async (event, context) => {
     
     // Insert a fake spike event to trigger the alerter
     const testEvent = {
-      event_type: 'test_spike',
+      event_type: 'pageview', // Use existing event type for better detection
       count: 1000, // Large number to trigger spike detection
       timestamp: new Date().toISOString(),
       session_id: 'test-session-' + Date.now(),
-      device: 'Test'
+      device: 'Desktop' // Use existing device type
     }
 
     console.log('📊 Inserting test spike event:', testEvent)

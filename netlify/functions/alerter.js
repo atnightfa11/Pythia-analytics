@@ -80,10 +80,7 @@ async function checkAlertsFromAggregates() {
         timestamp,
         count,
         event_type,
-        device_type,
-        country,
-        city,
-        region
+        device
       `)
       .gte('timestamp', sevenDaysAgo)
       .order('timestamp', { ascending: false })
@@ -101,7 +98,7 @@ async function checkAlertsFromAggregates() {
 
     aggregates.forEach(event => {
       const day = new Date(event.timestamp).toISOString().split('T')[0]
-      const segment = `${event.device_type || 'unknown'}-${event.country || 'unknown'}`
+      const segment = `${event.device || 'unknown'}-unknown` // Use device field, default country to 'unknown'
 
       const key = `${day}-${segment}`
       if (!dailyAggregates.has(key)) {

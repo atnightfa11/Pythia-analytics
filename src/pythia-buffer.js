@@ -409,4 +409,111 @@ window.pythiaStatus = () => {
   }
 }
 
+// Enhanced test alert trigger with guaranteed anomaly detection
+window.pythiaTestAlert = async (options = {}) => {
+  const {
+    eventCount = 500, // Number of events to create (high enough to trigger spike)
+    deviceType = 'Desktop',
+    country = 'US',
+    eventType = 'pageview',
+    delay = 1000, // Delay between batches
+    batchSize = 50 // Events per batch
+  } = options
+
+  console.log('🚨 Starting test alert injection...')
+  console.log(`📊 Will create ${eventCount} ${eventType} events for ${deviceType}/${country} segment`)
+
+  try {
+    // Clear existing buffer to avoid interference
+    window.pythiaBuffer.length = 0
+    console.log('🧹 Cleared existing buffer')
+
+    // Create events in batches to avoid overwhelming the buffer
+    const batches = Math.ceil(eventCount / batchSize)
+
+    for (let i = 0; i < batches; i++) {
+      const remainingEvents = eventCount - (i * batchSize)
+      const currentBatchSize = Math.min(batchSize, remainingEvents)
+
+      console.log(`📦 Processing batch ${i + 1}/${batches} (${currentBatchSize} events)`)
+
+      for (let j = 0; j < currentBatchSize; j++) {
+        const testEvent = {
+          event_type: eventType,
+          count: 1,
+          timestamp: new Date().toISOString(),
+          session_id: `test-spike-${deviceType}-${country}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          device: deviceType,
+          country: country,
+          city: 'Test City',
+          region: 'Test Region',
+          page: '/test-anomaly-page',
+          referrer: 'https://test-anomaly-source.com',
+          url: window.location.href
+        }
+
+        // Apply Laplace noise as per privacy requirements
+        const epsilon = window.pythiaStore?.getState?.()?.epsilon || 1.0
+        testEvent.count = testEvent.count + (Math.random() * 2 - 1) // Laplace noise
+        testEvent.epsilon = epsilon
+
+        window.pythiaBuffer.push(testEvent)
+      }
+
+      // Flush the batch immediately
+      console.log(`🚀 Flushing batch ${i + 1}/${batches}`)
+      await window.flushPythia()
+
+      // Small delay between batches to avoid overwhelming
+      if (i < batches - 1 && delay > 0) {
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
+    }
+
+    console.log('✅ Test events injected successfully!')
+    console.log(`📊 Created ${eventCount} events for segment: ${deviceType}/${country}`)
+    console.log('⏰ Alert should trigger within the next 30-60 seconds via alerter function')
+
+    // Also provide manual trigger option
+    console.log('🔧 Manual trigger available:')
+    console.log('  fetch("/.netlify/functions/alerter", {method: "POST"})')
+
+    return {
+      success: true,
+      eventsCreated: eventCount,
+      segment: `${deviceType}/${country}`,
+      expectedAlertType: 'spike',
+      timestamp: new Date().toISOString()
+    }
+
+  } catch (error) {
+    console.error('❌ Test alert injection failed:', error)
+    return {
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    }
+  }
+}
+
+// Quick spike test - creates minimal events for fast testing
+window.pythiaQuickSpike = async () => {
+  console.log('⚡ Running quick spike test...')
+  return await window.pythiaTestAlert({
+    eventCount: 200,
+    delay: 500,
+    batchSize: 100
+  })
+}
+
+// Custom alert test with user-specified parameters
+window.pythiaCustomAlert = async (eventCount, deviceType = 'Desktop', country = 'US') => {
+  console.log(`🎯 Creating custom alert with ${eventCount} events for ${deviceType}/${country}`)
+  return await window.pythiaTestAlert({
+    eventCount: parseInt(eventCount),
+    deviceType,
+    country
+  })
+}
+
 // Pythia buffer initialized - privacy-first analytics with UTM tracking active
