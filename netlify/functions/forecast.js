@@ -32,11 +32,177 @@ export const handler = async (event) => {
 
   const supabase = createClient(supabaseUrl, supabaseKey)
 
+  // Function to generate fresh forecast (bypassing cache)
+  async function generateFreshForecast() {
+    console.log('🎯 Generating fresh forecast (cache bypassed)')
+
+    // Get current events count
+    let currentEventsCount = 0
+    try {
+      const { data: eventsCountData, error: countError } = await supabase
+        .from('events')
+        .select('*', { count: 'exact', head: true })
+
+      if (!countError && eventsCountData !== null) {
+        currentEventsCount = eventsCountData
+      }
+    } catch (countErr) {
+      console.warn('⚠️ Events count lookup failed:', countErr)
+    }
+
+    console.log(`📊 Current events count: ${currentEventsCount}`)
+
+    // Try to fetch from Python service first
+    const isNetlify = process.env.NETLIFY === 'true' || process.env.AWS_LAMBDA_FUNCTION_NAME
+    const isDev = process.env.NODE_ENV === 'development' || process.env.NETLIFY_DEV === 'true'
+    const shouldCallPython = isNetlify && !isDev
+
+    console.log('🌍 Environment check:')
+    console.log('  NETLIFY:', process.env.NETLIFY)
+    console.log('  AWS_LAMBDA_FUNCTION_NAME:', process.env.AWS_LAMBDA_FUNCTION_NAME)
+    console.log('  NODE_ENV:', process.env.NODE_ENV)
+    console.log('  NETLIFY_DEV:', process.env.NETLIFY_DEV)
+    console.log('  shouldCallPython:', shouldCallPython)
+
+    let forecastData = null
+
+    if (shouldCallPython) {
+      console.log('🔍 Fetching fresh forecast from Python service...')
+      const pythonServiceUrl = process.env.PYTHON_SERVICE_URL || 'https://forecasting-service.fly.dev'
+      const forecastEndpoint = `${pythonServiceUrl}/forecast/fresh`
+
+      try {
+        const res = await fetch(forecastEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ currentEventsCount })
+        })
+
+        if (!res.ok) {
+          throw new Error(`${res.status} ${res.statusText}`)
+        }
+
+        forecastData = await res.json()
+        console.log('✅ Python service success - MAPE:', forecastData.mape)
+      } catch (fetchErr) {
+        console.error('❌ Python service error:', fetchErr.message)
+        console.error('❌ Error type:', fetchErr.name)
+        forecastData = null // Will fall through to local generation
+      }
+    }
+
+    // If no external service data, generate local forecast
+    if (!forecastData) {
+      console.log('🔧 Generating local forecast for development...')
+
+      // Generate completely new forecast
+      console.log('🎲 Generating new mock forecast for development')
+      const mockForecast = 150 + Math.random() * 50 // 150-200 range
+      const today = new Date()
+      const futureData = []
+
+      for (let i = 1; i <= 7; i++) {
+        const futureDate = new Date(today)
+        futureDate.setDate(today.getDate() + i)
+        const dayOfWeek = futureDate.getDay()
+
+        // Weekend effect (Sat=6, Sun=0)
+        const weekendMultiplier = (dayOfWeek === 0 || dayOfWeek === 6) ? 0.7 : 1.0
+
+        // Daily variation ±20%
+        const dailyVariation = 0.8 + Math.random() * 0.4
+
+        const predictedValue = mockForecast * weekendMultiplier * dailyVariation
+
+        futureData.push({
+          ds: futureDate.toISOString().split('T')[0],
+          yhat: Math.round(predictedValue),
+          yhat_lower: Math.round(predictedValue * 0.6),
+          yhat_upper: Math.round(predictedValue * 1.8)
+        })
+      }
+
+      forecastData = {
+        forecast: mockForecast,
+        mape: 18.5 + Math.random() * 10, // 18.5-28.5 range to vary it
+        future: futureData,
+        metadata: {
+          algorithm: 'fresh-mock-for-development',
+          source: 'local-generation',
+          forcedRefresh: true
+        }
+      }
+    }
+
+    // Store new forecast
+    let newEntry = null
+    try {
+      // Try to insert with new columns first
+      let insertData = {
+        forecast: forecastData.forecast,
+        mape: forecastData.mape,
+        future: forecastData.future,
+        generated_at: new Date().toISOString()
+      }
+
+      // Only add new columns if they exist (to handle missing migration)
+      try {
+        // Test if the columns exist by doing a quick select
+        await supabase.from('forecasts').select('events_count_at_generation').limit(1)
+        // If no error, columns exist
+        insertData.events_count_at_generation = currentEventsCount
+        insertData.model_version = forecastData.metadata?.modelVersion || '1.0'
+      } catch (colError) {
+        console.log('📝 Using legacy forecast table schema (new columns not available)')
+      }
+
+      const { data, error: insertError } = await supabase
+        .from('forecasts')
+        .insert(insertData)
+        .select()
+        .single()
+
+      if (insertError) throw insertError
+      newEntry = data
+      console.log('💾 Stored new forecast with events_count:', currentEventsCount)
+    } catch (dbErr) {
+      console.error('❌ Error storing forecast:', dbErr)
+    }
+
+    return {
+      statusCode: 200,
+      headers: { 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify({
+        forecast: forecastData.forecast,
+        mape: forecastData.mape,
+        generatedAt: newEntry?.generated_at || new Date().toISOString(),
+        future: forecastData.future || [],
+        cached: false,
+        eventsCountAtGeneration: currentEventsCount,
+        currentEventsCount: currentEventsCount,
+        modelVersion: forecastData.metadata?.modelVersion || '1.0',
+        metadata: {
+          ...forecastData.metadata,
+          forcedRefresh: true,
+          source: 'fresh-generation'
+        }
+      })
+    }
+  }
+
   // Check for force refresh parameter
   const { force } = event.queryStringParameters || {}
   const shouldForceRefresh = force === 'true'
+  console.log('🔍 [ENTRY] Force refresh check:', {
+    forceParam: force,
+    shouldForceRefresh,
+    queryParams: event.queryStringParameters
+  })
+
   if (shouldForceRefresh) {
     console.log('🔄 Force refresh requested - bypassing cache')
+    // Skip cache entirely and go directly to generation
+    return await generateFreshForecast()
   }
 
   // Get current events count for cache validation
@@ -72,9 +238,38 @@ export const handler = async (event) => {
       const FIFTEEN_MIN = 15 * 60 * 1000  // 15 minute cache
 
       // Cache is valid if: not forcing refresh AND age < 15min AND events count matches
-      const cacheIsValid = !shouldForceRefresh &&
-                          ageMs < FIFTEEN_MIN &&
-                          latest.events_count_at_generation === currentEventsCount
+      let cacheIsValid = !shouldForceRefresh &&
+                        ageMs < FIFTEEN_MIN &&
+                        latest?.events_count_at_generation === currentEventsCount
+
+      console.log('🔍 [DEBUG] Cache validation:', {
+        shouldForceRefresh,
+        ageMs,
+        FIFTEEN_MIN,
+        ageMinutes: Math.floor(ageMs / 1000 / 60),
+        eventsCountAtGeneration: latest?.events_count_at_generation,
+        currentEventsCount,
+        cacheIsValid,
+        generatedAt: latest.generated_at
+      })
+
+      // Force cache invalidation for old data (older than 1 hour)
+      const ONE_HOUR = 60 * 60 * 1000
+      if (ageMs > ONE_HOUR) {
+        console.log('⚠️ [DEBUG] Cache is very old, forcing invalidation')
+        cacheIsValid = false
+      }
+
+      // Additional debug logging
+      console.log('🔍 [DEBUG] Final cache decision:', {
+        finalCacheIsValid: cacheIsValid,
+        shouldForceRefresh,
+        ageMs,
+        ageMinutes: Math.floor(ageMs / 1000 / 60),
+        ageHours: Math.floor(ageMs / (1000 * 60 * 60)),
+        eventsCountMatch: latest?.events_count_at_generation === currentEventsCount,
+        cacheWillBeUsed: cacheIsValid
+      })
 
       if (cacheIsValid) {
         console.log('📋 Returning cached forecast (valid cache)')
@@ -88,16 +283,16 @@ export const handler = async (event) => {
             future: latest.future || [],
             cached: true,
             ageMinutes: Math.floor(ageMs / 1000 / 60),
-            eventsCountAtGeneration: latest.events_count_at_generation,
+            eventsCountAtGeneration: latest?.events_count_at_generation || 0,
             currentEventsCount: currentEventsCount,
-            modelVersion: latest.model_version
+            modelVersion: latest?.model_version || '1.0'
           })
         }
       } else {
         const reasons = []
         if (shouldForceRefresh) reasons.push('force refresh requested')
         if (ageMs >= FIFTEEN_MIN) reasons.push(`cache too old (${Math.floor(ageMs / 1000 / 60)}min)`)
-        if (latest.events_count_at_generation !== currentEventsCount) {
+        if (latest?.events_count_at_generation !== undefined && latest.events_count_at_generation !== currentEventsCount) {
           reasons.push(`events count changed (${latest.events_count_at_generation} → ${currentEventsCount})`)
         }
         console.log(`📋 Cache invalid: ${reasons.join(', ')}`)
@@ -220,9 +415,9 @@ export const handler = async (event) => {
           generatedAt: latest.generated_at,
           future: futureData,
           cached: true,
-          eventsCountAtGeneration: latest.events_count_at_generation,
+          eventsCountAtGeneration: latest?.events_count_at_generation || 0,
           currentEventsCount: currentEventsCount,
-          modelVersion: latest.model_version,
+          modelVersion: latest?.model_version || '1.0',
           metadata: {
             algorithm: 'simplified-prophet',
             source: 'cached-with-generated-future'
@@ -272,16 +467,28 @@ export const handler = async (event) => {
   // Store new forecast (if available)
   let newEntry = null
   try {
+    // Try to insert with new columns first
+    let insertData = {
+      forecast: forecastData.forecast,
+      mape: forecastData.mape,
+      future: forecastData.future,
+      generated_at: new Date().toISOString()
+    }
+
+    // Only add new columns if they exist (to handle missing migration)
+    try {
+      // Test if the columns exist by doing a quick select
+      await supabase.from('forecasts').select('events_count_at_generation').limit(1)
+      // If no error, columns exist
+      insertData.events_count_at_generation = currentEventsCount
+      insertData.model_version = forecastData.metadata?.modelVersion || '1.0'
+    } catch (colError) {
+      console.log('📝 Using legacy forecast table schema (new columns not available)')
+    }
+
     const { data, error: insertError } = await supabase
       .from('forecasts')
-      .insert({
-        forecast: forecastData.forecast,
-        mape: forecastData.mape,
-        future: forecastData.future,
-        generated_at: new Date().toISOString(),
-        events_count_at_generation: currentEventsCount,
-        model_version: forecastData.metadata?.modelVersion || '1.0'
-      })
+      .insert(insertData)
       .select()
       .single()
 

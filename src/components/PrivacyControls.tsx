@@ -102,24 +102,33 @@ export function PrivacyControls({
   const handleDigestToggle = async (enabled: boolean) => {
     setUpdating(true);
     setDigestEnabled(enabled);
-    
-    try {
-      // In a real implementation, this would call your preferences API
-      await fetch('/.netlify/functions/preferences', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          digestEnabled: enabled,
-          preference: 'slack_digest'
-        })
-      });
-      
-      console.log(`📧 Slack digest ${enabled ? 'enabled' : 'disabled'}`);
-    } catch (error) {
-      console.warn('⚠️ Failed to update digest preference:', error);
-    } finally {
-      setUpdating(false);
+
+    // Store in localStorage (always works locally)
+    localStorage.setItem('pythia_digest_enabled', enabled.toString());
+
+    // Only make API call in production (not localhost)
+    const isProduction = !window.location.hostname.includes('localhost') &&
+                        !window.location.hostname.includes('127.0.0.1');
+
+    if (isProduction) {
+      try {
+        await fetch('/.netlify/functions/preferences', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            digestEnabled: enabled,
+            preference: 'slack_digest'
+          })
+        });
+        console.log(`📧 Slack digest ${enabled ? 'enabled' : 'disabled'} (saved to server)`);
+      } catch (error) {
+        console.warn('⚠️ Failed to save digest preference to server:', error);
+      }
+    } else {
+      console.log(`📧 Slack digest ${enabled ? 'enabled' : 'disabled'} (saved locally)`);
     }
+
+    setUpdating(false);
   };
 
   // Load preferences on mount and expose store to window
