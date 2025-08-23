@@ -135,7 +135,7 @@ export const handler = async (event, context) => {
       new Date(a.date).getTime() - new Date(b.date).getTime()
     )
 
-    // Get recent events for real-time display
+    // Get recent events for real-time display and raw events
     const { data: recentEvents, error: recentError } = await supabase
       .from('events')
       .select('timestamp, event_type, count, session_id, device')
@@ -211,7 +211,7 @@ export const handler = async (event, context) => {
         timeSeries: timeSeriesData,
         realtime: realtimeData,
         eventTypeCounts,
-        rawEvents: events?.slice(-50) || [], // Last 50 raw events for debugging
+        rawEvents: recentEvents?.slice(0, 50) || [], // Most recent 50 events for debugging
         generatedAt: new Date().toISOString()
       })
     }
