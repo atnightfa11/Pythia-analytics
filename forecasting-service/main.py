@@ -129,9 +129,14 @@ def clean_and_forecast(events, days_to_forecast=14):
         logger.info("📈 Added detailed weekly pattern detection")
     
     model.fit(df)
-    
-    # Generate forecast
-    future = model.make_future_dataframe(periods=days_to_forecast)
+
+    # Generate forecast - Use current date instead of historical data's last date
+    # This ensures forecasts are always for future dates, not stuck in the past
+    today = pd.Timestamp.now().normalize()  # Get today's date (no time component)
+    future_dates = pd.date_range(start=today, periods=days_to_forecast, freq='D')
+
+    # Create future dataframe with today's date onwards
+    future = pd.DataFrame({'ds': future_dates})
     forecast = model.predict(future)
     
     # Transform back if we used log
