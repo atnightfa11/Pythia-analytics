@@ -53,16 +53,19 @@ export const handler = async (event) => {
     console.log(`📊 Current events count: ${currentEventsCount}`)
 
     // Try to fetch from Python service first
-    const isNetlify = process.env.NETLIFY === 'true' || process.env.AWS_LAMBDA_FUNCTION_NAME
-    const isDev = process.env.NODE_ENV === 'development' || process.env.NETLIFY_DEV === 'true'
+    // Check if we're running in Netlify (either NETLIFY=true or AWS_LAMBDA_FUNCTION_NAME set)
+    const isNetlify = (process.env.NETLIFY === 'true') || !!process.env.AWS_LAMBDA_FUNCTION_NAME
+    const isDev = (process.env.NODE_ENV === 'development') || (process.env.NETLIFY_DEV === 'true')
     const shouldCallPython = isNetlify && !isDev
 
     console.log('🌍 Environment check:')
-    console.log('  NETLIFY:', process.env.NETLIFY)
-    console.log('  AWS_LAMBDA_FUNCTION_NAME:', process.env.AWS_LAMBDA_FUNCTION_NAME)
-    console.log('  NODE_ENV:', process.env.NODE_ENV)
-    console.log('  NETLIFY_DEV:', process.env.NETLIFY_DEV)
-    console.log('  shouldCallPython:', shouldCallPython)
+    console.log('  NETLIFY:', process.env.NETLIFY, '(should be "true" or undefined)')
+    console.log('  AWS_LAMBDA_FUNCTION_NAME:', process.env.AWS_LAMBDA_FUNCTION_NAME ? 'Set' : 'Not set')
+    console.log('  NODE_ENV:', process.env.NODE_ENV, '(should be "production" in prod)')
+    console.log('  NETLIFY_DEV:', process.env.NETLIFY_DEV, '(should be "true" in dev)')
+    console.log('  isNetlify:', isNetlify, '(should be true in Netlify)')
+    console.log('  isDev:', isDev, '(should be false in production)')
+    console.log('  shouldCallPython:', shouldCallPython, '(should be true for Python service calls)')
 
     let forecastData = null
 

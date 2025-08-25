@@ -51,6 +51,9 @@ export const handler = async (event, context) => {
 
     console.log('📋 Query parameters:', { limit, acknowledged, severity, type })
 
+    // Default to showing only unacknowledged alerts for the badge
+    const defaultAcknowledged = acknowledged !== null ? (acknowledged === 'true') : false
+
     // Build query
     let query = supabase
       .from('alerts')

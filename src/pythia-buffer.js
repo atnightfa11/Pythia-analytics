@@ -181,12 +181,23 @@ window.addEventListener('popstate', () => {
 const MAX_BUFFER_SIZE = 50 // Flush immediately when buffer reaches this size
 let lastFlushTime = Date.now()
 let flushCount = 0
+let isVisible = !document.hidden
+let flushRetryCount = 0
+const MAX_RETRY_ATTEMPTS = 3
+const RETRY_BASE_DELAY = 1000
 
 // Enhanced batch sending with configurable randomized intervals for privacy
 function scheduleBufferFlush() {
-  // Randomize flush interval between 20-80 seconds to avoid predictable patterns
-  // This helps with privacy by making traffic analysis more difficult
-  const flushInterval = 20000 + Math.random() * 60000; // 20-80 seconds
+  // Only schedule flush if page is visible
+  if (!isVisible) {
+    // Schedule next check when page becomes visible
+    setTimeout(scheduleBufferFlush, 1000)
+    return
+  }
+
+  // Reduce flush interval to 5-15 seconds for near-realtime updates
+  // This balances privacy with responsiveness while avoiding predictable patterns
+  const flushInterval = 5000 + Math.random() * 10000; // 5-15 seconds
 
   setTimeout(async () => {
     // Check if buffer size threshold is reached (immediate flush)
@@ -206,7 +217,7 @@ function scheduleBufferFlush() {
   }, flushInterval);
 }
 
-// Perform the actual buffer flush
+// Perform the actual buffer flush with exponential backoff
 async function performBufferFlush() {
   const count = window.pythiaBuffer.length
   const intervalMs = Date.now() - lastFlushTime
@@ -263,10 +274,18 @@ async function performBufferFlush() {
     if (response.ok && !result.error) {
       // Batch sent successfully (removed logging to reduce console spam)
 
+      // Track privacy budget usage
+      if (window.trackEventPrivacyCost && typeof window.trackEventPrivacyCost === 'function') {
+        window.trackEventPrivacyCost(count, epsilon)
+      }
+
       // Clear buffer only on successful processing
       window.pythiaBuffer.length = 0
       lastFlushTime = Date.now()
       flushCount++
+
+      // Reset retry count on success
+      flushRetryCount = 0
 
       if (import.meta.env?.DEV) {
         console.log(`✅ Buffer flushed successfully (${count} events, flush #${flushCount})`)
@@ -274,15 +293,35 @@ async function performBufferFlush() {
 
     } else {
       console.error('❌ server error:', result)
-      // Don't clear buffer on error - events will be retried in next interval
+      // Don't clear buffer on error - events will be retried with backoff
+      await handleFlushError()
     }
   } catch (error) {
     console.error('❌ failed to send batch:', error)
-    // Don't clear buffer on network error - events will be retried in next interval
+    // Don't clear buffer on network error - events will be retried with backoff
+    await handleFlushError()
   }
 
   // Schedule next flush regardless of success/failure
   scheduleBufferFlush();
+}
+
+// Handle flush errors with exponential backoff
+async function handleFlushError() {
+  flushRetryCount++
+
+  if (flushRetryCount >= MAX_RETRY_ATTEMPTS) {
+    console.warn(`⚠️ Max retry attempts (${MAX_RETRY_ATTEMPTS}) reached, resetting retry count`)
+    flushRetryCount = 0 // Reset to allow future attempts
+    return
+  }
+
+  // Exponential backoff: baseDelay * 2^attempt + jitter
+  const backoffDelay = RETRY_BASE_DELAY * Math.pow(2, flushRetryCount - 1) + Math.random() * 1000
+
+  console.log(`🔄 Retry ${flushRetryCount}/${MAX_RETRY_ATTEMPTS} after ${Math.round(backoffDelay)}ms delay`)
+
+  await new Promise(resolve => setTimeout(resolve, backoffDelay))
 }
 
 // Start the randomized buffer flush cycle
@@ -515,5 +554,23 @@ window.pythiaCustomAlert = async (eventCount, deviceType = 'Desktop', country = 
     country
   })
 }
+
+// Visibility change listener to pause/resume flushing
+document.addEventListener('visibilitychange', () => {
+  const wasVisible = isVisible
+  isVisible = !document.hidden
+
+  if (isVisible && !wasVisible) {
+    // Page became visible - resume normal flushing
+    console.log('👁️ Page became visible - resuming buffer flushing')
+    scheduleBufferFlush()
+  } else if (!isVisible && wasVisible) {
+    // Page became hidden - pause flushing
+    console.log('👁️ Page became hidden - pausing buffer flushing')
+  }
+})
+
+// Initial visibility check
+isVisible = !document.hidden
 
 // Pythia buffer initialized - privacy-first analytics with UTM tracking active

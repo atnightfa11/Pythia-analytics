@@ -51,6 +51,7 @@ interface Alert {
   severity: 'low' | 'medium' | 'high';
   data?: Record<string, unknown>;
   acknowledged?: boolean;
+  acknowledged_at?: string;
   created_at?: string;
 }
 
@@ -368,9 +369,12 @@ export function Dashboard() {
     });
   }, []);
 
-  const fetchAlerts = useCallback(async () => {
+  const fetchAlerts = useCallback(async (acknowledged?: boolean) => {
     return await retryWithBackoff(async () => {
-      const response = await fetch('/.netlify/functions/get-alerts');
+      const url = acknowledged !== undefined
+        ? `/.netlify/functions/get-alerts?acknowledged=${acknowledged}`
+        : '/.netlify/functions/get-alerts'; // Default shows unacknowledged only
+      const response = await fetch(url);
       if (!response.ok) {
         throw new Error(`Alerts API error: ${response.status}`);
       }

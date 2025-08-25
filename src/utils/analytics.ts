@@ -50,6 +50,7 @@ export interface Alert {
   severity: 'low' | 'medium' | 'high';
   data?: Record<string, any>;
   acknowledged?: boolean;
+  acknowledged_at?: string;
   created_at?: string;
 }
 

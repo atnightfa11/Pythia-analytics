@@ -50,7 +50,8 @@ export function PrivacyControls({
   className = ""
 }: PrivacyControlsProps) {
   const [dailyMax] = useState(2.0); // Daily privacy budget limit
-  const [used] = useState(1.2); // Simulated daily usage
+  const [used, setUsed] = useState(0); // Track actual usage
+  const [lastReset, setLastReset] = useState(Date.now());
   const [digestEnabled, setDigestEnabled] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [showBanner, setShowBanner] = useState(false);
@@ -61,6 +62,70 @@ export function PrivacyControls({
 
   // Use store epsilon as the source of truth
   const currentEpsilon = storeEpsilon;
+
+  // Load privacy budget from localStorage
+  useEffect(() => {
+    const stored = localStorage.getItem('pythia-privacy-budget')
+    if (stored) {
+      try {
+        const data = JSON.parse(stored)
+        const now = Date.now()
+        const lastReset = data.lastReset || now
+
+        // Check if we need to reset (new day)
+        const daysSinceReset = Math.floor((now - lastReset) / (24 * 60 * 60 * 1000))
+        if (daysSinceReset >= 1) {
+          // Reset for new day
+          setUsed(0)
+          setLastReset(now)
+          localStorage.setItem('pythia-privacy-budget', JSON.stringify({
+            used: 0,
+            lastReset: now
+          }))
+        } else {
+          // Load existing usage
+          setUsed(data.used || 0)
+          setLastReset(lastReset)
+        }
+      } catch (error) {
+        console.warn('Failed to load privacy budget:', error)
+        setUsed(0)
+        setLastReset(Date.now())
+      }
+    }
+  }, [])
+
+  // Save privacy budget to localStorage
+  const saveBudget = (newUsed: number) => {
+    const data = {
+      used: newUsed,
+      lastReset: lastReset
+    }
+    localStorage.setItem('pythia-privacy-budget', JSON.stringify(data))
+    setUsed(newUsed)
+  }
+
+  // Track privacy usage when events are sent
+  const trackEventPrivacyCost = (eventCount: number, epsilon: number) => {
+    // Base cost per event is small, but increases with lower epsilon
+    const baseCostPerEvent = 0.01
+    const epsilonMultiplier = epsilon <= 0.5 ? 2.0 :
+                            epsilon <= 1.0 ? 1.5 :
+                            epsilon <= 1.5 ? 1.2 : 1.0
+
+    const totalCost = baseCostPerEvent * eventCount * epsilonMultiplier
+    const newUsed = Math.min(dailyMax, used + totalCost)
+    saveBudget(newUsed)
+
+    console.log(`🔒 Privacy cost: ${totalCost.toFixed(3)}ε (${eventCount} events, ε=${epsilon})`)
+  }
+
+  // Expose tracking function to window for buffer access
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.trackEventPrivacyCost = trackEventPrivacyCost
+    }
+  }, [used, lastReset])
 
   // Calculate privacy metrics
   const percentUsed = Math.min(100, Math.round((used / dailyMax) * 100));
@@ -74,8 +139,23 @@ export function PrivacyControls({
 
   // Handle epsilon change with banner notification
   const handleEpsilonChange = (newEpsilon: number) => {
+    // Calculate privacy cost based on epsilon value
+    // Lower epsilon = higher privacy = higher cost
+    const calculatePrivacyCost = (epsilon: number) => {
+      if (epsilon <= 0.5) return 0.8;      // High privacy = high cost
+      if (epsilon <= 1.0) return 0.4;      // Moderate privacy = moderate cost
+      if (epsilon <= 1.5) return 0.2;      // Balanced privacy = low cost
+      return 0.1;                          // Low privacy = minimal cost
+    }
+
+    const privacyCost = calculatePrivacyCost(newEpsilon)
+    const newUsed = Math.min(dailyMax, used + privacyCost)
+
     // Update Zustand store
     setEpsilon(newEpsilon);
+
+    // Save updated budget
+    saveBudget(newUsed);
 
     // Call parent callback
     onEpsilonChange?.(newEpsilon);
@@ -90,7 +170,7 @@ export function PrivacyControls({
                         newEpsilon <= 1.0 ? 'Moderate' :
                         newEpsilon <= 1.5 ? 'Balanced' : 'Low';
 
-    setBannerMessage(`Privacy level updated: ε=${newEpsilon.toFixed(1)} (${privacyLevel})`);
+    setBannerMessage(`Privacy level updated: ε=${newEpsilon.toFixed(1)} (${privacyLevel}) | Cost: ${privacyCost.toFixed(1)}ε`);
     setShowBanner(true);
 
     setTimeout(() => {
@@ -330,5 +410,6 @@ declare global {
   interface Window {
     pythiaSettings?: (settings: { epsilon: number }) => void;
     pythiaStore?: typeof usePrivacyStore;
+    trackEventPrivacyCost?: (eventCount: number, epsilon: number) => void;
   }
 }

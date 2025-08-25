@@ -147,15 +147,28 @@ def clean_and_forecast(events, days_to_forecast=14):
         df['y'] = df['y_orig']  # Restore original values for MAPE calculation
     
     # RECOMPUTE MAPE on last 14 days actuals vs previous predictions
-    mape = 11.9  # Default fallback (current stuck value)
+    mape = 11.9  # Default fallback (will be replaced if calculation succeeds)
+    logger.info(f"🔍 Starting MAPE calculation with fallback: {mape}%")
 
     # Connect to Supabase to get previous forecasts for MAPE calculation
     try:
+        logger.info("🔌 Connecting to Supabase for MAPE calculation...")
+        logger.info(f"📍 SUPABASE_URL: {SUPABASE_URL}")
+        logger.info(f"🔑 SUPABASE_KEY length: {len(SUPABASE_KEY) if SUPABASE_KEY else 0}")
+
+        if not SUPABASE_URL or not SUPABASE_KEY:
+            logger.error("❌ Missing Supabase credentials for MAPE calculation")
+            raise ValueError("Missing SUPABASE_URL or SUPABASE_KEY")
+
         sb = create_client(SUPABASE_URL, SUPABASE_KEY)
+        logger.info("✅ Supabase client created successfully")
 
         # Get last 14 days of actual data
         fourteen_days_ago = (pd.Timestamp.now() - pd.Timedelta(days=14)).isoformat()
+        logger.info(f"📅 Querying events from: {fourteen_days_ago}")
+
         actual_response = sb.table('events').select('timestamp,count').gte('timestamp', fourteen_days_ago).order('timestamp').execute()
+        logger.info(f"📊 Actual data response: {len(actual_response.data) if actual_response.data else 0} records")
 
         if actual_response.data:
             # Aggregate actuals by day
