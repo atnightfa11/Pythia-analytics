@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   BarChart3,
@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import { Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell, ComposedChart } from 'recharts';
 import { PrivacyControls, usePrivacyStore } from './PrivacyControls';
-import { CONFIG } from '../env-config.js';
+import { CONFIG } from '../env-config';
 
 // Types for our live data
 interface TimeSeriesData {
@@ -270,6 +270,10 @@ const retryWithBackoff = async <T,>(
 ): Promise<T> => {
   let lastError: Error | unknown;
 
+  if (maxAttempts <= 0) {
+    throw new Error('maxAttempts must be greater than 0');
+  }
+
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       return await fn();
@@ -286,6 +290,9 @@ const retryWithBackoff = async <T,>(
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
+
+  // This should never be reached, but TypeScript needs it
+  throw lastError || new Error('Retry failed after all attempts');
 };
 
 export function Dashboard() {
@@ -600,12 +607,17 @@ export function Dashboard() {
 
   // Live visitors refresh with 5-second interval and exponential backoff
   useEffect(() => {
+    console.log('🔄 Setting up live visitors polling with interval:', CONFIG.LIVE_POLL_MS);
     const liveInterval = setInterval(async () => {
       try {
+        console.log('📡 Fetching live visitors...');
         const data = await fetchLiveVisitors();
+        console.log('✅ Live visitors data:', data);
         setLiveCount(data.liveVisitors || 0);
         setLiveLastUpdated(new Date());
-      } catch {
+        console.log('📊 Updated live count to:', data.liveVisitors || 0);
+      } catch (error) {
+        console.error('❌ Live visitors fetch error:', error);
         // Silent failure for auto-refresh to avoid console spam
       }
     }, CONFIG.LIVE_POLL_MS);

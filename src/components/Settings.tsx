@@ -1,20 +1,13 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { 
-  BarChart3, 
-  Settings as SettingsIcon, 
-  Shield, 
-  Bell, 
-  Globe, 
+import {
+  BarChart3,
+  Shield,
+  Bell,
+  Globe,
   Zap,
   Save,
-  AlertTriangle,
-  Mail,
-  MessageSquare,
-  Sliders,
-  Database,
-  Key,
-  Users
+  AlertTriangle
 } from 'lucide-react';
 import { SlackTestPanel } from './SlackTestPanel';
 
@@ -112,13 +105,15 @@ export function SettingsPanel() {
                   <label className="block text-sm font-medium text-slate-700 mb-2">
                     Privacy Parameter (ε)
                   </label>
-                  <select 
+                  <select
                     value={settings.privacy.epsilon}
                     onChange={(e) => setSettings(prev => ({
                       ...prev,
                       privacy: { ...prev.privacy, epsilon: parseFloat(e.target.value) }
                     }))}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    title="Privacy parameter epsilon value"
+                    aria-label="Privacy parameter epsilon value"
                   >
                     <option value={0.1}>Maximum Privacy (ε = 0.1)</option>
                     <option value={0.5}>High Privacy (ε = 0.5)</option>
@@ -143,6 +138,9 @@ export function SettingsPanel() {
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                     min="10"
                     max="500"
+                    placeholder="e.g., 50"
+                    title="Batch size for data processing"
+                    aria-label="Batch size for data processing"
                   />
                   <p className="text-xs text-slate-500 mt-1">Number of events to batch before sending</p>
                 </div>
@@ -161,6 +159,9 @@ export function SettingsPanel() {
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                     min="5"
                     max="300"
+                    placeholder="e.g., 30"
+                    title="Batch interval in seconds"
+                    aria-label="Batch interval in seconds"
                   />
                   <p className="text-xs text-slate-500 mt-1">Maximum time to wait before sending batch</p>
                 </div>
@@ -179,6 +180,7 @@ export function SettingsPanel() {
                         privacy: { ...prev.privacy, noiseInjection: e.target.checked }
                       }))}
                       className="sr-only peer"
+                      aria-label="Enable client-side noise injection for maximum privacy"
                     />
                     <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
                   </label>
@@ -210,6 +212,7 @@ export function SettingsPanel() {
                         alerts: { ...prev.alerts, enabled: e.target.checked }
                       }))}
                       className="sr-only peer"
+                      aria-label="Enable alert notifications"
                     />
                     <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-amber-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
                   </label>
@@ -232,6 +235,9 @@ export function SettingsPanel() {
                           className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                           min="5"
                           max="100"
+                          placeholder="e.g., 25"
+                          title="Alert threshold percentage"
+                          aria-label="Alert threshold percentage"
                         />
                         <p className="text-xs text-slate-500 mt-1">Percentage change to trigger alert</p>
                       </div>
@@ -324,6 +330,7 @@ export function SettingsPanel() {
                         predictions: { ...prev.predictions, enabled: e.target.checked }
                       }))}
                       className="sr-only peer"
+                      aria-label="Enable prediction models"
                     />
                     <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-teal-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-600"></div>
                   </label>
@@ -335,13 +342,15 @@ export function SettingsPanel() {
                       <label className="block text-sm font-medium text-slate-700 mb-2">
                         Prediction Model
                       </label>
-                      <select 
+                      <select
                         value={settings.predictions.model}
                         onChange={(e) => setSettings(prev => ({
                           ...prev,
                           predictions: { ...prev.predictions, model: e.target.value }
                         }))}
                         className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                        title="Prediction model type"
+                        aria-label="Prediction model type"
                       >
                         <option value="prophet">Prophet (Time Series)</option>
                         <option value="llm">LLM-Powered</option>
@@ -364,6 +373,9 @@ export function SettingsPanel() {
                         className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                         min="1"
                         max="30"
+                        placeholder="e.g., 7"
+                        title="Forecast period in days"
+                        aria-label="Forecast period in days"
                       />
                     </div>
 
@@ -371,13 +383,15 @@ export function SettingsPanel() {
                       <label className="block text-sm font-medium text-slate-700 mb-2">
                         Confidence Level
                       </label>
-                      <select 
+                      <select
                         value={settings.predictions.confidence}
                         onChange={(e) => setSettings(prev => ({
                           ...prev,
                           predictions: { ...prev.predictions, confidence: parseFloat(e.target.value) }
                         }))}
                         className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                        title="Confidence level percentage"
+                        aria-label="Confidence level percentage"
                       >
                         <option value={0.90}>90%</option>
                         <option value={0.95}>95%</option>
