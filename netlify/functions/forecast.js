@@ -39,7 +39,7 @@ export const handler = async (event) => {
     // Get current events count
     let currentEventsCount = 0
     try {
-      const { data: eventsCountData, error: countError } = await supabase
+      const { count: eventsCountData, error: countError } = await supabase
         .from('events')
         .select('*', { count: 'exact', head: true })
 
@@ -208,7 +208,7 @@ export const handler = async (event) => {
   // Get current events count for cache validation
   let currentEventsCount = 0
   try {
-    const { data: eventsCountData, error: countError } = await supabase
+    const { count: eventsCountData, error: countError } = await supabase
       .from('events')
       .select('*', { count: 'exact', head: true })
 
