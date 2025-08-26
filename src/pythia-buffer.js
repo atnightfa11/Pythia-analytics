@@ -1,13 +1,24 @@
 // pythia-buffer.js - Enhanced with session tracking, device detection, and UTM parameter capture
 window.pythiaBuffer = []
 
-// Session management
+// Enhanced session management with security considerations
 function getOrCreateSessionId() {
   let sessionId = localStorage.getItem('pythia_session_id')
-  if (!sessionId) {
+
+  // Check if session is expired (24 hours) or corrupted
+  const sessionTimestamp = localStorage.getItem('pythia_session_timestamp')
+  const now = Date.now()
+  const SESSION_DURATION = 24 * 60 * 60 * 1000 // 24 hours
+
+  if (!sessionId ||
+      !sessionTimestamp ||
+      (now - parseInt(sessionTimestamp)) > SESSION_DURATION ||
+      !isValidUUID(sessionId)) {
+    // Generate new session
     sessionId = crypto.randomUUID()
     localStorage.setItem('pythia_session_id', sessionId)
-    
+    localStorage.setItem('pythia_session_timestamp', now.toString())
+
     // Buffer session start event
     window.pythiaBuffer.push({
       event_type: 'session_start',
@@ -18,10 +29,16 @@ function getOrCreateSessionId() {
       url: window.location.href,
       ...extractUTMParams()
     })
-    
-    // Session created (removed logging to reduce console spam)
+
+    console.log('🔐 New session created (privacy-protected)')
   }
   return sessionId
+}
+
+// Validate UUID format
+function isValidUUID(uuid) {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  return uuidRegex.test(uuid)
 }
 
 // Device detection helper
@@ -42,34 +59,54 @@ function getDeviceType() {
   return 'Desktop'
 }
 
-// UTM parameter extraction
+// UTM parameter extraction with security enhancements
 function extractUTMParams() {
   const urlParams = new URLSearchParams(window.location.search)
   const utmParams = {}
-  
-  // Extract all UTM parameters
-  if (urlParams.get('utm_source')) utmParams.utm_source = urlParams.get('utm_source')
-  if (urlParams.get('utm_medium')) utmParams.utm_medium = urlParams.get('utm_medium')
-  if (urlParams.get('utm_campaign')) utmParams.utm_campaign = urlParams.get('utm_campaign')
-  if (urlParams.get('utm_term')) utmParams.utm_term = urlParams.get('utm_term')
-  if (urlParams.get('utm_content')) utmParams.utm_content = urlParams.get('utm_content')
+
+  // Extract and sanitize UTM parameters
+  const allowedUTMParams = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content']
+
+  allowedUTMParams.forEach(param => {
+    const value = urlParams.get(param)
+    if (value && value.length <= 100) { // Limit length for security
+      // Basic sanitization - remove potentially harmful characters
+      const sanitized = value.replace(/[<>\"'&]/g, '').substring(0, 100)
+      utmParams[param] = sanitized
+    }
+  })
 
   // Store UTM params in session storage for persistence across pages
   if (Object.keys(utmParams).length > 0) {
-    sessionStorage.setItem('pythia_utm_params', JSON.stringify(utmParams))
+    try {
+      sessionStorage.setItem('pythia_utm_params', JSON.stringify(utmParams))
+      // Set expiration for UTM data (24 hours)
+      sessionStorage.setItem('pythia_utm_expiry', (Date.now() + 24 * 60 * 60 * 1000).toString())
+    } catch (e) {
+      console.warn('⚠️ Failed to store UTM params:', e)
+    }
   } else {
     // Try to get stored UTM params from session
     const storedUTM = sessionStorage.getItem('pythia_utm_params')
-    if (storedUTM) {
+    const utmExpiry = sessionStorage.getItem('pythia_utm_expiry')
+
+    if (storedUTM && (!utmExpiry || Date.now() < parseInt(utmExpiry))) {
       try {
         const parsedUTM = JSON.parse(storedUTM)
         Object.assign(utmParams, parsedUTM)
       } catch (e) {
         console.warn('⚠️ Failed to parse stored UTM params:', e)
+        // Clear corrupted data
+        sessionStorage.removeItem('pythia_utm_params')
+        sessionStorage.removeItem('pythia_utm_expiry')
       }
+    } else if (utmExpiry && Date.now() >= parseInt(utmExpiry)) {
+      // Clean up expired UTM data
+      sessionStorage.removeItem('pythia_utm_params')
+      sessionStorage.removeItem('pythia_utm_expiry')
     }
   }
-  
+
   return utmParams
 }
 
@@ -250,7 +287,8 @@ async function performBufferFlush() {
     ...evt,
     count: evt.count + (Math.random() * 2 - 1), // Laplace noise scaled by ε
     epsilon: epsilon, // Include ε in event metadata
-    epsilonHistory: [] // Will be populated if history is needed
+    epsilonHistory: [], // Will be populated if history is needed
+    country: getCountryFromTimezone() // Add country detection
   }))
 
   // Dev-only telemetry
@@ -357,7 +395,8 @@ window.flushPythia = async () => {
   const noisy = evts.map(evt => ({
     ...evt,
     count: evt.count + (Math.random() * 2 - 1), // Laplace noise scaled by ε
-    epsilon: epsilon // Include ε in event metadata
+    epsilon: epsilon, // Include ε in event metadata
+    country: getCountryFromTimezone() // Add country detection
   }))
 
   // Dev-only telemetry for manual flush
@@ -401,6 +440,38 @@ window.flushPythia = async () => {
   }
 }
 
+// Get country from timezone (privacy-friendly approximation)
+function getCountryFromTimezone() {
+  try {
+    // Get user's timezone
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+
+    // Map common timezones to countries (approximate)
+    const timezoneToCountry = {
+      // North America
+      'America/New_York': 'US', 'America/Chicago': 'US', 'America/Denver': 'US',
+      'America/Los_Angeles': 'US', 'America/Toronto': 'CA', 'America/Vancouver': 'CA',
+      'America/Mexico_City': 'MX',
+
+      // Europe
+      'Europe/London': 'GB', 'Europe/Paris': 'FR', 'Europe/Berlin': 'DE',
+      'Europe/Rome': 'IT', 'Europe/Madrid': 'ES', 'Europe/Amsterdam': 'NL',
+
+      // Asia-Pacific
+      'Asia/Tokyo': 'JP', 'Asia/Shanghai': 'CN', 'Asia/Seoul': 'KR',
+      'Asia/Singapore': 'SG', 'Australia/Sydney': 'AU', 'Asia/Kolkata': 'IN',
+
+      // Default fallback
+      'UTC': 'Unknown'
+    }
+
+    return timezoneToCountry[timezone] || 'Unknown'
+  } catch (error) {
+    console.warn('⚠️ Failed to detect timezone:', error)
+    return 'Unknown'
+  }
+}
+
 // Enhanced helper to add events to buffer with session, device, and UTM data
 window.pythia = (eventType, count = 1, data = {}) => {
   const event = {
@@ -415,9 +486,9 @@ window.pythia = (eventType, count = 1, data = {}) => {
     ...utmParams,
     ...data
   }
-  
+
   window.pythiaBuffer.push(event)
-  
+
   return event
 }
 
@@ -573,4 +644,44 @@ document.addEventListener('visibilitychange', () => {
 // Initial visibility check
 isVisible = !document.hidden
 
-// Pythia buffer initialized - privacy-first analytics with UTM tracking active
+// Enhanced cleanup for old sessions and data
+function cleanupOldData() {
+  try {
+    // Clean up expired sessions (older than 7 days)
+    const sessionTimestamp = localStorage.getItem('pythia_session_timestamp')
+    if (sessionTimestamp) {
+      const sessionAge = Date.now() - parseInt(sessionTimestamp)
+      const MAX_SESSION_AGE = 7 * 24 * 60 * 60 * 1000 // 7 days
+
+      if (sessionAge > MAX_SESSION_AGE) {
+        console.log('🧹 Cleaning up old session data')
+        localStorage.removeItem('pythia_session_id')
+        localStorage.removeItem('pythia_session_timestamp')
+        sessionStorage.removeItem('pythia_utm_params')
+        sessionStorage.removeItem('pythia_utm_expiry')
+      }
+    }
+
+    // Clean up any corrupted localStorage data
+    const keysToCheck = ['pythia_session_id', 'pythia_session_timestamp']
+    keysToCheck.forEach(key => {
+      try {
+        const value = localStorage.getItem(key)
+        if (value && value.length > 1000) { // Suspiciously large
+          console.warn(`🧹 Cleaning up suspicious ${key} data`)
+          localStorage.removeItem(key)
+        }
+      } catch (e) {
+        console.warn(`🧹 Removing corrupted ${key} data`)
+        localStorage.removeItem(key)
+      }
+    })
+  } catch (error) {
+    console.warn('⚠️ Error during data cleanup:', error)
+  }
+}
+
+// Run cleanup on initialization
+cleanupOldData()
+
+// Pythia buffer initialized - privacy-first analytics with enhanced security

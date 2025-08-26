@@ -71,10 +71,12 @@ async function checkAlertsRealtime(eventData) {
 // Check alerts using noisy aggregates (privacy-compliant)
 async function checkAlertsFromAggregates() {
   try {
-    // Get noisy daily aggregates for the last 7 days
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+    // Get noisy daily aggregates for the last 3 days (reduced from 7 to avoid timeouts)
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
+    console.log(`🔍 Querying events from: ${threeDaysAgo}`)
 
-    const { data: aggregates, error: aggError } = await supabase
+    // Add timeout to prevent hanging queries
+    const queryPromise = supabase
       .from('events')
       .select(`
         timestamp,
@@ -82,16 +84,32 @@ async function checkAlertsFromAggregates() {
         event_type,
         device
       `)
-      .gte('timestamp', sevenDaysAgo)
+      .gte('timestamp', threeDaysAgo)
       .order('timestamp', { ascending: false })
-      .limit(1000) // Get recent data for analysis
+      .limit(500) // Reduced limit to improve query performance
 
-    if (aggError) throw aggError
+    // 💡 Performance tip: Consider adding this index in Supabase dashboard:
+    // CREATE INDEX CONCURRENTLY idx_events_timestamp_device ON events (timestamp DESC, device);
+    // This would significantly improve query performance for this specific query pattern
+
+    // Set a 10-second timeout for the query
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Database query timeout')), 10000)
+    )
+
+    const { data: aggregates, error: aggError } = await Promise.race([queryPromise, timeoutPromise])
+
+    if (aggError) {
+      console.error('❌ Database query error:', aggError)
+      throw aggError
+    }
 
     if (!aggregates || aggregates.length === 0) {
-      console.log('📭 No aggregate data available')
+      console.log('📭 No aggregate data available for alert analysis')
       return
     }
+
+    console.log(`📊 Processing ${aggregates.length} events for alert analysis`)
 
     // Group by day and segment for privacy-compliant analysis
     const dailyAggregates = new Map()
@@ -116,18 +134,26 @@ async function checkAlertsFromAggregates() {
       agg.eventCount += 1
     })
 
+    console.log(`📈 Created ${dailyAggregates.size} daily aggregates for analysis`)
+
     // Get latest forecast for comparison
     const baseUrl = process.env.NETLIFY_URL || process.env.SITE_URL || 'https://getpythia.tech'
     const forecastUrl = `${baseUrl}/.netlify/functions/forecast`
 
+    console.log(`🔮 Fetching forecast from: ${forecastUrl}`)
+
     const forecastResponse = await fetch(forecastUrl, {
       method: 'GET',
-      signal: AbortSignal.timeout(8000)
+      signal: AbortSignal.timeout(12000) // Increased to 12s to allow for Python service
     })
 
     if (!forecastResponse.ok) {
+      const errorText = await forecastResponse.text()
+      console.error(`❌ Forecast API error: ${forecastResponse.status} - ${errorText}`)
       throw new Error(`Forecast API error: ${forecastResponse.status}`)
     }
+
+    console.log('✅ Forecast API responded successfully')
 
     const forecastData = await forecastResponse.json()
 
@@ -143,6 +169,20 @@ async function checkAlertsFromAggregates() {
 
   } catch (error) {
     console.error('❌ Aggregate alert checking failed:', error)
+
+    // Provide specific error messages based on error type
+    if (error.message?.includes('Database query timeout')) {
+      console.error('💡 Suggestion: Database query timed out. This might be due to:')
+      console.error('   - Large dataset in events table')
+      console.error('   - Slow database connection')
+      console.error('   - Consider reducing query time range or adding database indexes')
+    } else if (error.message?.includes('Forecast API error')) {
+      console.error('💡 Suggestion: Forecast service unavailable. Check:')
+      console.error('   - Python service deployment status')
+      console.error('   - Network connectivity to forecast service')
+      console.error('   - Environment variables for forecast service')
+    }
+
     throw error
   }
 }

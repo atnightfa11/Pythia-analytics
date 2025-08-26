@@ -34,12 +34,172 @@ PYTHON_SERVICE_URL=https://forecasting-service.fly.dev
 - **🚨 Smart Alerts**: Automated anomaly detection with Slack notifications
 - **🍪 Cookieless Tracking**: No cookies, no persistent identifiers
 - **⚡ Real-time Analytics**: Live visitor tracking and event monitoring
+- **🗺️ Geographic Insights**: Timezone-based country detection (privacy-preserving)
 
-## Documentation
+## 🔒 Privacy Policy
+
+### **Data Collection & Privacy Principles**
+
+Pythia Analytics is built with privacy as the foundation. We implement multiple layers of privacy protection:
+
+#### **🎯 Core Privacy Commitments**
+- **No Personal Identifiers**: We never collect names, emails, IP addresses, or any personally identifiable information
+- **Client-Side Processing**: All data processing happens in your users' browsers, never on our servers
+- **No Cross-Site Tracking**: Analytics data is scoped to your single domain only
+- **User-Controlled Data**: Users can clear all data anytime through browser settings
+
+#### **🕒 Data Retention & Automatic Cleanup**
+
+**Session Data (24 hours)**:
+- Session IDs are automatically regenerated every 24 hours
+- No persistent tracking across sessions
+- Session data expires naturally and cannot be recovered
+
+**Browser Storage Cleanup (7 days)**:
+- Mirrors Safari's Intelligent Tracking Prevention (ITP) limits
+- All localStorage and sessionStorage data automatically cleaned up after 7 days
+- Old session data is proactively removed to prevent accumulation
+- Data corruption detection and automatic cleanup of malformed data
+
+**Event Data (Configurable)**:
+- Raw events are stored in your Supabase database
+- Retention period is controlled by your database policies
+- No automatic deletion - you control data lifecycle
+
+#### **🔐 Differential Privacy Implementation**
+
+**Noise Injection**:
+- All numeric data receives Laplace noise before transmission
+- Privacy budget (ε) is configurable per user (default: ε=1.0)
+- Higher privacy settings add more noise for stronger protection
+- Mathematical guarantees prevent re-identification
+
+**Geographic Data**:
+- Country detection uses browser timezone only (no GPS or IP geolocation)
+- Approximate mapping: timezone → country code (e.g., "America/New_York" → "US")
+- No precise location data or regional identification
+- Fully compatible with differential privacy noise
+
+#### **🌐 Data Flow Security**
+
+```mermaid
+graph TD
+    A[User Browser] --> B[Client-Side Processing]
+    B --> C[Noise Injection + ε Control]
+    C --> D[Encrypted Transmission]
+    D --> E[Your Database Only]
+    F[No External Services] --> E
+```
+
+**Security Features**:
+- All data transmitted over HTTPS
+- No third-party analytics services
+- No data sharing or selling
+- Server-side logs contain no user identifiers
+
+#### **📊 What We Collect**
+
+**Technical Data Only**:
+- Event types (pageview, click, custom events)
+- Event counts with differential privacy noise
+- Device type (from User-Agent string)
+- Approximate country (from timezone)
+- Session duration and page interactions
+- UTM parameters (marketing attribution)
+
+**What We DON'T Collect**:
+- ❌ IP addresses or geolocation data
+- ❌ Names, emails, or personal information
+- ❌ Browser fingerprints or device IDs
+- ❌ Cross-site tracking data
+- ❌ Any server-side user identification
+
+#### **🗑️ Data Deletion & User Rights**
+
+**Immediate Data Deletion**:
+```javascript
+// Users can clear all data immediately:
+localStorage.clear()
+sessionStorage.clear()
+
+// Or selectively:
+localStorage.removeItem('pythia_session_id')
+localStorage.removeItem('pythia_session_timestamp')
+```
+
+**Database Data**:
+- Delete data through your Supabase dashboard
+- All events are tied to your domain only
+- No data portability requirements (aggregate analytics only)
+
+#### **⚖️ Legal Compliance**
+
+- **GDPR Compliant**: No personal data collection
+- **CCPA Compliant**: No sale or sharing of personal information
+- **No Cookies**: Cookie-free implementation
+- **No Tracking**: No cross-site or behavioral tracking
+
+#### **🔧 Technical Implementation**
+
+**Automatic Cleanup Code**:
+```javascript
+// Session expiration (24 hours)
+const SESSION_DURATION = 24 * 60 * 60 * 1000 // 24 hours
+
+// Data cleanup (7 days) - mirrors Safari ITP
+const MAX_SESSION_AGE = 7 * 24 * 60 * 60 * 1000 // 7 days
+if (sessionAge > MAX_SESSION_AGE) {
+  localStorage.removeItem('pythia_session_id')
+  localStorage.removeItem('pythia_session_timestamp')
+}
+```
+
+**Differential Privacy Code**:
+```javascript
+// Laplace noise injection
+const noise = Math.random() * 2 - 1 // Random between -1 and 1
+const noisyCount = event.count + noise * epsilon
+```
+
+**Automatic Cleanup Code**:
+```javascript
+// Proactive data cleanup - mirrors Safari ITP
+function cleanupOldData() {
+  const sessionAge = Date.now() - parseInt(sessionTimestamp)
+  const MAX_SESSION_AGE = 7 * 24 * 60 * 60 * 1000 // 7 days
+
+  if (sessionAge > MAX_SESSION_AGE) {
+    localStorage.removeItem('pythia_session_id')
+    localStorage.removeItem('pythia_session_timestamp')
+    sessionStorage.removeItem('pythia_utm_params')
+  }
+}
+```
+
+**Country Detection Code**:
+```javascript
+// Privacy-preserving geographic detection
+function getCountryFromTimezone() {
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+
+  // Approximate mapping: timezone → country code
+  const timezoneToCountry = {
+    'America/New_York': 'US', 'Europe/London': 'GB',
+    'Europe/Berlin': 'DE', 'Asia/Tokyo': 'JP'
+    // ... etc - no IP addresses involved
+  }
+
+  return timezoneToCountry[timezone] || 'Unknown'
+}
+```
+
+---
+
+## 📖 Documentation
 
 📖 **[Complete Setup Guide](/docs)** - Detailed installation, configuration, and troubleshooting
-
 🧠 **[How Differential Privacy Works](/blog/differential-privacy)** - Technical deep dive
+🔒 **[Privacy Policy](PRIVACY_POLICY.md)** - Comprehensive privacy documentation
 
 ## Development & Testing
 
