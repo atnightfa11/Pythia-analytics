@@ -15,7 +15,19 @@
     "generate-schema": "node supabase/validations/schema-validator.js --generate-constants",
     "add-schema-headers": "node supabase/validations/schema-validator.js --add-headers",
     "test-migrations": "node scripts/test-migrations.js",
-    "generate-migration-ci": "node scripts/test-migrations.js --generate-ci"
+    "generate-migration-ci": "node scripts/test-migrations.js --generate-ci",
+    "validate-tsconfig": "node scripts/validate-tsconfig.js",
+    "dependency-audit": "node scripts/dependency-check.js",
+    "dependency-update": "node scripts/dependency-check.js --full",
+    "browserslist-update": "node scripts/dependency-check.js --update-browserslist",
+    "dependency-ci": "node scripts/dependency-check.js --generate-ci",
+    "performance-check": "node scripts/performance-budgets.js",
+    "performance-test": "node scripts/performance-budgets.js --generate-tests",
+    "performance-ci": "node scripts/performance-budgets.js --generate-ci",
+    "benchmark-forecasting": "node scripts/benchmark-forecasting.js",
+    "benchmark-warm-start": "node scripts/benchmark-forecasting.js --full",
+    "benchmark-ci": "node scripts/benchmark-forecasting.js --report",
+    "optimize-alerter": "node scripts/optimize-alerter.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",

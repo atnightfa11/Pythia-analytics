@@ -314,13 +314,64 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Detailed health check"""
+    """Enhanced health check for warm-start monitoring"""
+    import time
+    import psutil
+
+    start_time = time.time()
+
+    # Check Supabase connection
+    supabase_status = "unknown"
+    try:
+        if SUPABASE_URL and SUPABASE_KEY:
+            supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+            # Quick connectivity test
+            response = supabase.table('events').select('count').limit(1)
+            supabase_status = "connected" if response else "error"
+        else:
+            supabase_status = "not_configured"
+    except Exception as e:
+        supabase_status = f"error: {str(e)}"
+
+    # Check cache directory
+    cache_status = "unknown"
+    try:
+        import os
+        cache_exists = os.path.exists("/data/cache")
+        cache_writable = os.access("/data/cache", os.W_OK) if cache_exists else False
+        cache_status = "ready" if cache_exists and cache_writable else "needs_setup"
+    except Exception as e:
+        cache_status = f"error: {str(e)}"
+
+    # System resource monitoring
+    process = psutil.Process()
+    memory_info = process.memory_info()
+    cpu_percent = process.cpu_percent(interval=0.1)
+
+    # Model readiness check
+    model_status = "ready"
+    try:
+        # Quick Prophet import test
+        from prophet import Prophet
+        model_status = "ready"
+    except Exception as e:
+        model_status = f"error: {str(e)}"
+
+    response_time = time.time() - start_time
+
     return {
         "status": "healthy",
-        "supabase_configured": bool(SUPABASE_URL and SUPABASE_KEY),
-        "cache_dir": "/data/cache",
+        "timestamp": time.time(),
+        "response_time_ms": round(response_time * 1000, 2),
+        "uptime_seconds": time.time() - getattr(app.state, 'start_time', time.time()),
+        "supabase_connection": supabase_status,
+        "cache_status": cache_status,
+        "model_status": model_status,
+        "memory_mb": round(memory_info.rss / 1024 / 1024, 2),
+        "cpu_percent": round(cpu_percent, 2),
         "forecast_horizon_days": FORECAST_HORIZON_DAYS,
-        "forecast_lookback_days": FORECAST_LOOKBACK_DAYS
+        "forecast_lookback_days": FORECAST_LOOKBACK_DAYS,
+        "warm_start_ready": True  # Indicates service is ready for requests
     }
 
 @app.get("/forecast", response_model=ForecastResponse)

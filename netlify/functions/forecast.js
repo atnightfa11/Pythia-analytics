@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { withTimeoutMonitoring } from '../_middleware/timeout-monitor.js'
 
 /**
  * SCHEMA_VERSION: 2025-08-26
@@ -7,7 +8,7 @@ import { createClient } from '@supabase/supabase-js'
  */
 
 
-export const handler = async (event) => {
+const handler = async (event) => {
   // CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
@@ -527,3 +528,5 @@ export const handler = async (event) => {
     })
   }
 }
+
+export const handler = withTimeoutMonitoring(handler)

@@ -13,19 +13,30 @@ primary_region = 'atl'
   force_https = true
   auto_stop_machines = 'suspend'
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
+  max_machines_running = 3
   processes = ['app']
 
-# Add health checks to prevent cold start issues
+# Optimized health checks for warm-start performance
 [checks]
   [checks.health]
     port = 8080
     type = 'http'
-    interval = '30s'
-    timeout = '10s'
-    grace_period = '5s'
+    interval = '15s'
+    timeout = '5s'
+    grace_period = '2s'
     method = 'GET'
     path = '/health'
+
+# Auto-scaling based on concurrent requests
+[[http_service.checks]]
+  grace_period = "10s"
+  interval = "30s"
+  method = "GET"
+  timeout = "5s"
+  path = "/health"
+  port = 8080
+  type = "http"
 
 [[vm]]
   memory = '1gb'

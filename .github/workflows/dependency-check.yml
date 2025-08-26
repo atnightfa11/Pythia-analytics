@@ -1,0 +1,44 @@
+# Dependency Management CI Configuration
+# Add this to your GitHub Actions or CI pipeline
+
+name: Dependency Check
+on:
+  schedule:
+    # Run weekly on Mondays at 9 AM UTC
+    - cron: '0 9 * * 1'
+  push:
+    branches: [main, develop]
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+
+jobs:
+  dependency-check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Check dependencies
+      run: npm run dependency-audit
+
+    - name: Update browserslist
+      run: npm run browserslist-update
+
+    - name: Create dependency update PR
+      if: github.event_name == 'schedule'
+      run: |
+        # This would create a PR with safe dependency updates
+        # Implementation depends on your CI platform
+        echo "Dependency update PR would be created here"
