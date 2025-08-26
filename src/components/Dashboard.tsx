@@ -369,11 +369,21 @@ export function Dashboard() {
     });
   }, []);
 
-  const fetchAlerts = useCallback(async (acknowledged?: boolean) => {
+  const fetchAlerts = useCallback(async (acknowledged?: boolean, forceRefresh = false) => {
     return await retryWithBackoff(async () => {
-      const url = acknowledged !== undefined
-        ? `/.netlify/functions/get-alerts?acknowledged=${acknowledged}`
+      const params = new URLSearchParams();
+      if (acknowledged !== undefined) {
+        params.set('acknowledged', acknowledged.toString());
+      }
+      if (forceRefresh) {
+        params.set('_t', Date.now().toString()); // Cache-busting parameter
+      }
+
+      const queryString = params.toString();
+      const url = queryString
+        ? `/.netlify/functions/get-alerts?${queryString}`
         : '/.netlify/functions/get-alerts'; // Default shows unacknowledged only
+
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error(`Alerts API error: ${response.status}`);
@@ -636,6 +646,27 @@ export function Dashboard() {
     };
   }, [fetchLiveVisitors]);
 
+  // Alerts refresh with 30-second interval
+  useEffect(() => {
+    console.log('🔄 Setting up alerts polling with 30-second interval');
+    const alertsInterval = setInterval(async () => {
+      try {
+        const alertsData = await fetchAlerts(undefined, true); // Force refresh to avoid cache
+        console.log('📡 Refreshed alerts - found', alertsData.alerts?.length || 0, 'alerts');
+
+        // Always update alerts (even if empty) to ensure fresh data
+        setAlerts(alertsData.alerts || []);
+      } catch (error) {
+        console.error('❌ Alerts refresh error:', error);
+        // Silent failure for auto-refresh to avoid console spam
+      }
+    }, 30000); // 30 seconds
+
+    return () => {
+      clearInterval(alertsInterval);
+    };
+  }, [fetchAlerts]);
+
   // Test function for analytics
   const testAnalytics = () => {
     if (typeof window.pythia === 'function') {
@@ -693,6 +724,16 @@ export function Dashboard() {
 
         // Show user feedback
         alert(`Failed to ${acknowledged ? 'acknowledge' : 'unacknowledge'} alert: ${errorData.error || 'Unknown error'}`);
+      } else {
+        // Success - refresh alerts to ensure we have the latest data
+        console.log('✅ Alert acknowledged successfully, refreshing alerts...');
+        try {
+          const alertsData = await fetchAlerts(undefined, true); // Force refresh
+          setAlerts(alertsData.alerts || []);
+        } catch (refreshError) {
+          console.warn('⚠️ Failed to refresh alerts after acknowledgment:', refreshError);
+          // Don't show error to user - the optimistic update should be sufficient
+        }
       }
     } catch (error) {
       console.error('❌ Error acknowledging alert:', error);
@@ -1410,7 +1451,25 @@ export function Dashboard() {
           <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-semibold text-slate-100">Smart Alerts</h3>
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={async () => {
+                    try {
+                      setAlertsLoading(true);
+                      const alertsData = await fetchAlerts(undefined, true);
+                      setAlerts(alertsData.alerts || []);
+                      console.log('🔄 Manually refreshed alerts');
+                    } catch (error) {
+                      console.error('❌ Failed to refresh alerts:', error);
+                    } finally {
+                      setAlertsLoading(false);
+                    }
+                  }}
+                  className="p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-700 rounded transition-colors"
+                  title="Refresh alerts"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </button>
                 <Zap className="w-5 h-5 text-amber-400" />
                 <span className="text-xs text-slate-400">
                   {alerts.filter(a => !a.acknowledged).length} unread
