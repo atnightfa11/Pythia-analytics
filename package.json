@@ -10,7 +10,12 @@
     "preview": "vite preview",
     "test": "vitest",
     "seed": "node scripts/seed-data.js",
-    "forecast": "node scripts/test-forecast.js"
+    "forecast": "node scripts/test-forecast.js",
+    "validate-schema": "node supabase/validations/schema-validator.js",
+    "generate-schema": "node supabase/validations/schema-validator.js --generate-constants",
+    "add-schema-headers": "node supabase/validations/schema-validator.js --add-headers",
+    "test-migrations": "node scripts/test-migrations.js",
+    "generate-migration-ci": "node scripts/test-migrations.js --generate-ci"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
