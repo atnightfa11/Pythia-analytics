@@ -105,24 +105,10 @@ export function Footer() {
 
         {/* Bottom Bar */}
         <div className="pt-8 border-t border-slate-800">
-          <div className="flex flex-col sm:flex-row items-center justify-between space-y-4 sm:space-y-0">
+          <div className="flex items-center justify-center">
             <p className="text-slate-400 text-sm">
               © {currentYear} Pythia Analytics Inc.
             </p>
-            <a
-              href="https://bolt.new/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center space-x-2 hover:opacity-80 transition-opacity"
-              title="Built with Bolt.new"
-            >
-              <img 
-                src="/bolt-badge-white.svg" 
-                alt="Built with Bolt.new" 
-                className="w-8 h-8"
-              />
-              <span className="text-slate-400 text-xs">Built with Bolt.new</span>
-            </a>
           </div>
         </div>
       </div>

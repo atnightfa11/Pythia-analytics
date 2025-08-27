@@ -27,7 +27,9 @@
     "benchmark-forecasting": "node scripts/benchmark-forecasting.js",
     "benchmark-warm-start": "node scripts/benchmark-forecasting.js --full",
     "benchmark-ci": "node scripts/benchmark-forecasting.js --report",
-    "optimize-alerter": "node scripts/optimize-alerter.js"
+    "optimize-alerter": "node scripts/optimize-alerter.js",
+    "check-cached-forecasts": "node scripts/check-cached-forecasts.js",
+    "refresh-forecast-cache": "node scripts/check-cached-forecasts.js refresh"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",

@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { TABLES, COLUMNS } from '../../supabase/validations/schema-constants.js'
-import { withTimeoutMonitoring } from '../_middleware/timeout-monitor.js'
+import { withTimeoutMonitoring } from './_middleware/timeout-monitor.js'
 
 /**
  * SCHEMA_VERSION: 2025-08-26
@@ -342,7 +342,7 @@ async function sendSlackAlert(alert) {
   }
 }
 
-const handler = async (event, context) => {
+const handlerFunction = async (event, context) => {
   // CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
@@ -370,21 +370,33 @@ const handler = async (event, context) => {
     console.log('  SUPABASE_URL:', process.env.SUPABASE_URL ? '✅ Set' : '❌ Missing')
     console.log('  VITE_SUPABASE_URL:', process.env.VITE_SUPABASE_URL ? '✅ Set' : '❌ Missing')
 
+    // Check development mode
+    const isDev = process.env.NODE_ENV === 'development' || process.env.NETLIFY_DEV === 'true'
+    console.log('  NETLIFY_DEV:', process.env.NETLIFY_DEV)
+    console.log('  NODE_ENV:', process.env.NODE_ENV)
+    console.log('  isDev:', isDev)
+
     // Check if we have the required environment variables
     const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
-    
+
     if (!supabaseUrl || !supabaseKey) {
       console.error('❌ Missing Supabase credentials')
       return {
         statusCode: 500,
         headers: { 'Access-Control-Allow-Origin': '*' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           error: 'Missing Supabase credentials',
           details: 'SUPABASE_URL and SUPABASE_ANON_KEY (or VITE_ prefixed versions) must be set',
-          available: Object.keys(process.env).filter(key => key.includes('SUPABASE'))
+          available: Object.keys(process.env).filter(key => key.includes('SUPABASE')),
+          isDevelopment: isDev
         })
       }
+    }
+
+    // In development mode, provide a more graceful response for testing
+    if (isDev) {
+      console.log('🔧 Development mode detected - running with limited functionality')
     }
 
     // Use new privacy-compliant alert checking
@@ -402,18 +414,33 @@ const handler = async (event, context) => {
           realtimeEnabled: !!realtimeSubscription,
           deduplicationWindow: DEDUPE_WINDOW_MINUTES,
           threshold: THRESHOLD * 100,
-          segmentsTracked: lastAlertTimes.size
+          segmentsTracked: lastAlertTimes.size,
+          isDevelopment: isDev,
+          performance: getPerformanceMetrics()
         })
       }
     } catch (alertError) {
       console.error('❌ Alert checking failed:', alertError)
+
+      // In development mode, provide more detailed error info
+      const errorResponse = {
+        error: 'Alert checking failed',
+        details: alertError.message,
+        isDevelopment: isDev,
+        performance: getPerformanceMetrics()
+      }
+
+      if (isDev) {
+        errorResponse.stack = alertError.stack
+        errorResponse.availableEnvVars = Object.keys(process.env).filter(key =>
+          key.includes('SUPABASE') || key.includes('NETLIFY') || key.includes('NODE_ENV')
+        )
+      }
+
       return {
-        statusCode: 500,
+        statusCode: isDev ? 500 : 502, // 502 in production to indicate gateway error
         headers: { 'Access-Control-Allow-Origin': '*' },
-        body: JSON.stringify({
-          error: 'Alert checking failed',
-          details: alertError.message
-        })
+        body: JSON.stringify(errorResponse)
       }
     }
 
@@ -431,4 +458,4 @@ const handler = async (event, context) => {
   }
 }
 
-export const handler = withTimeoutMonitoring(handler)
+export const handler = withTimeoutMonitoring(handlerFunction)

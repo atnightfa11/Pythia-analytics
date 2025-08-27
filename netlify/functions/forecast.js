@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { withTimeoutMonitoring } from '../_middleware/timeout-monitor.js'
+import { withTimeoutMonitoring } from './_middleware/timeout-monitor.js'
 
 /**
  * SCHEMA_VERSION: 2025-08-26
@@ -8,7 +8,7 @@ import { withTimeoutMonitoring } from '../_middleware/timeout-monitor.js'
  */
 
 
-const handler = async (event) => {
+const handlerFunction = async (event) => {
   // CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
@@ -135,7 +135,7 @@ const handler = async (event) => {
 
       forecastData = {
         forecast: mockForecast,
-        mape: 18.5 + Math.random() * 10, // 18.5-28.5 range to vary it
+        mape: 12.5, // Fixed realistic MAPE for development testing
         future: futureData,
         metadata: {
           algorithm: 'fresh-mock-for-development',
@@ -371,12 +371,20 @@ const handler = async (event) => {
   if (!forecastData) {
     console.log('🔧 Generating local forecast for development...')
     
-    // Use cache if available
-    if (latest) {
+    // Check if cache should be considered invalid (for development mode)
+    const cacheAgeMs = latest ? Date.now() - new Date(latest.generated_at).getTime() : Infinity
+    const cacheEventsCount = latest?.events_count_at_generation || 0
+    const shouldUseFreshData = !latest ||
+                               shouldForceRefresh ||
+                               cacheAgeMs > (60 * 60 * 1000) || // 1 hour
+                               cacheEventsCount !== currentEventsCount
+
+    // Use cache only if it's actually valid
+    if (latest && !shouldUseFreshData) {
       console.log('📋 Using cached forecast with generated future data')
       const today = new Date()
       const futureData = []
-      
+
       // Get recent traffic data for context
       const { data: recentEvents } = await supabase
         .from('events')
@@ -384,31 +392,31 @@ const handler = async (event) => {
         .gte('timestamp', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
         .order('timestamp', { ascending: false })
         .limit(3000)
-      
-      const todayTraffic = recentEvents ? recentEvents.filter(e => 
+
+      const todayTraffic = recentEvents ? recentEvents.filter(e =>
         new Date(e.timestamp).toDateString() === today.toDateString()
       ).length : 150
-      
+
       // Realistic forecast with variation and trending
       const baseForecast = Math.max(latest.forecast, 120) // Minimum realistic traffic
       const isSpike = todayTraffic > baseForecast * 3 // Detect if today is a spike
-      
+
       for (let i = 1; i <= 7; i++) {
         const futureDate = new Date(today)
         futureDate.setDate(today.getDate() + i)
         const dayOfWeek = futureDate.getDay()
-        
+
         // Weekend effect (Sat=6, Sun=0)
         const weekendMultiplier = (dayOfWeek === 0 || dayOfWeek === 6) ? 0.7 : 1.0
-        
+
         // Spike decay if today was a spike
         const spikeDecay = isSpike ? Math.max(0.5, 1 - (i * 0.15)) : 1.0
-        
+
         // Daily variation ±15%
         const dailyVariation = 0.85 + Math.random() * 0.3
-        
+
         const predictedValue = baseForecast * weekendMultiplier * spikeDecay * dailyVariation
-        
+
         futureData.push({
           ds: futureDate.toISOString().split('T')[0],
           yhat: Math.round(predictedValue),
@@ -430,47 +438,71 @@ const handler = async (event) => {
           currentEventsCount: currentEventsCount,
           modelVersion: latest?.model_version || '1.0',
           metadata: {
-            algorithm: 'simplified-prophet',
-            source: 'cached-with-generated-future'
+            algorithm: 'cached-with-fresh-future',
+            source: 'cache-valid-with-fresh-future',
+            cacheValid: true
           }
         })
       }
-    }
-    
-    // Generate completely new forecast
-    console.log('🎲 Generating new mock forecast for development')
-    const mockForecast = 150 + Math.random() * 50 // 150-200 range
-    const today = new Date()
-    const futureData = []
-    
-    for (let i = 1; i <= 7; i++) {
-      const futureDate = new Date(today)
-      futureDate.setDate(today.getDate() + i)
-      const dayOfWeek = futureDate.getDay()
-      
-      // Weekend effect (Sat=6, Sun=0)
-      const weekendMultiplier = (dayOfWeek === 0 || dayOfWeek === 6) ? 0.7 : 1.0
-      
-      // Daily variation ±20%
-      const dailyVariation = 0.8 + Math.random() * 0.4
-      
-      const predictedValue = mockForecast * weekendMultiplier * dailyVariation
-      
-      futureData.push({
-        ds: futureDate.toISOString().split('T')[0],
-        yhat: Math.round(predictedValue),
-        yhat_lower: Math.round(predictedValue * 0.6),
-        yhat_upper: Math.round(predictedValue * 1.8)
-      })
-    }
+    } else {
+      // Generate completely fresh forecast (cache invalid or unavailable)
+      if (shouldUseFreshData && latest) {
+        console.log('🔄 Cache invalidated, generating fresh forecast')
+      } else {
+        console.log('🎲 No valid cache, generating fresh forecast')
+      }
 
-    forecastData = {
-      forecast: mockForecast,
-      mape: 18.5,
-      future: futureData,
-      metadata: {
-        algorithm: 'mock-for-development',
-        source: 'local-generation'
+      // Get recent traffic data for realistic forecasting
+      const { data: recentEvents } = await supabase
+        .from('events')
+        .select('timestamp')
+        .gte('timestamp', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+        .order('timestamp', { ascending: false })
+        .limit(3000)
+
+      const today = new Date()
+      const todayTraffic = recentEvents ? recentEvents.filter(e =>
+        new Date(e.timestamp).toDateString() === today.toDateString()
+      ).length : 150
+
+      // Base forecast on recent actual traffic with realistic variation
+      const baseTrafficLevel = Math.max(todayTraffic, 120) // Minimum realistic traffic
+      const mockForecast = baseTrafficLevel * (0.9 + Math.random() * 0.3) // ±15% variation
+
+      const futureData = []
+
+      for (let i = 1; i <= 7; i++) {
+        const futureDate = new Date(today)
+        futureDate.setDate(today.getDate() + i)
+        const dayOfWeek = futureDate.getDay()
+
+        // Weekend effect (Sat=6, Sun=0)
+        const weekendMultiplier = (dayOfWeek === 0 || dayOfWeek === 6) ? 0.7 : 1.0
+
+        // Daily variation ±25% with slight upward trend
+        const dailyVariation = 0.75 + Math.random() * 0.5
+        const trendFactor = 1 + (i * 0.015) // Slight upward trend
+
+        const predictedValue = mockForecast * weekendMultiplier * dailyVariation * trendFactor
+
+        futureData.push({
+          ds: futureDate.toISOString().split('T')[0],
+          yhat: Math.round(predictedValue),
+          yhat_lower: Math.round(predictedValue * 0.8),
+          yhat_upper: Math.round(predictedValue * 1.3)
+        })
+      }
+
+      forecastData = {
+        forecast: mockForecast,
+        mape: 12.5, // Fixed realistic MAPE - will be replaced by actual model accuracy when Python service is available
+        future: futureData,
+        metadata: {
+          algorithm: 'fresh-local-development',
+          source: 'cache-invalidated-fresh-generation',
+          forcedRefresh: shouldForceRefresh,
+          cacheInvalidated: shouldUseFreshData
+        }
       }
     }
   }
@@ -529,4 +561,4 @@ const handler = async (event) => {
   }
 }
 
-export const handler = withTimeoutMonitoring(handler)
+export const handler = withTimeoutMonitoring(handlerFunction)

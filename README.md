@@ -4,7 +4,8 @@ Privacy-first predictive analytics with differential privacy and real-time forec
 
 ## Quick Deploy
 
-[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/atnightfa11/Pythia-analytics)
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](
+https://app.netlify.com/start/deploy?repository=https://github.com/atnightfa11/Pythia-analytics)
 
 ## Setup (5 minutes)
 
@@ -51,34 +52,34 @@ Pythia Analytics is built with privacy as the foundation. We implement multiple 
 #### **🕒 Data Retention & Automatic Cleanup**
 
 **Session Data (24 hours)**:
-- Session IDs are automatically regenerated every 24 hours
-- No persistent tracking across sessions
-- Session data expires naturally and cannot be recovered
+- **Session Data**: Session IDs are automatically regenerated every 24 hours
+- **No Persistent Tracking**: No persistent tracking across sessions
+- **Natural Expiration**: Session data expires naturally and cannot be recovered
 
 **Browser Storage Cleanup (7 days)**:
-- Mirrors Safari's Intelligent Tracking Prevention (ITP) limits
-- All localStorage and sessionStorage data automatically cleaned up after 7 days
-- Old session data is proactively removed to prevent accumulation
-- Data corruption detection and automatic cleanup of malformed data
+- **Safari ITP Mirror**: Mirrors Safari's Intelligent Tracking Prevention (ITP) limits
+- **Automatic Cleanup**: All localStorage and sessionStorage data automatically cleaned up after 7 days
+- **Proactive Removal**: Old session data is proactively removed to prevent accumulation
+- **Data Integrity**: Data corruption detection and automatic cleanup of malformed data
 
 **Event Data (Configurable)**:
-- Raw events are stored in your Supabase database
-- Retention period is controlled by your database policies
-- No automatic deletion - you control data lifecycle
+- **Your Database**: Raw events are stored in your Supabase database
+- **User Control**: Retention period is controlled by your database policies
+- **Full Control**: No automatic deletion - you control data lifecycle
 
 #### **🔐 Differential Privacy Implementation**
 
 **Noise Injection**:
-- All numeric data receives Laplace noise before transmission
-- Privacy budget (ε) is configurable per user (default: ε=1.0)
-- Higher privacy settings add more noise for stronger protection
-- Mathematical guarantees prevent re-identification
+- **Laplace Noise**: All numeric data receives Laplace noise before transmission
+- **Configurable Privacy**: Privacy budget (ε) is configurable per user (default: ε=1.0)
+- **Privacy-Strength Balance**: Higher privacy settings add more noise for stronger protection
+- **Mathematical Guarantees**: Mathematical guarantees prevent re-identification
 
 **Geographic Data**:
-- Country detection uses browser timezone only (no GPS or IP geolocation)
-- Approximate mapping: timezone → country code (e.g., "America/New_York" → "US")
-- No precise location data or regional identification
-- Fully compatible with differential privacy noise
+- **Timezone-Based**: Country detection uses browser timezone only (no GPS or IP geolocation)
+- **Approximate Mapping**: Approximate mapping: timezone → country code (e.g., "America/New_York" → "US")
+- **No Precise Location**: No precise location data or regional identification
+- **DP Compatible**: Fully compatible with differential privacy noise
 
 #### **🌐 Data Flow Security**
 
@@ -92,27 +93,27 @@ graph TD
 ```
 
 **Security Features**:
-- All data transmitted over HTTPS
-- No third-party analytics services
-- No data sharing or selling
-- Server-side logs contain no user identifiers
+- **HTTPS Encryption**: All data transmitted over HTTPS
+- **No Third Parties**: No third-party analytics services
+- **No Data Sharing**: No data sharing or selling
+- **Clean Logs**: Server-side logs contain no user identifiers
 
 #### **📊 What We Collect**
 
 **Technical Data Only**:
-- Event types (pageview, click, custom events)
-- Event counts with differential privacy noise
-- Device type (from User-Agent string)
-- Approximate country (from timezone)
-- Session duration and page interactions
-- UTM parameters (marketing attribution)
+- **Event Types**: Event types (pageview, click, custom events)
+- **Event Counts**: Event counts with differential privacy noise
+- **Device Type**: Device type (from User-Agent string)
+- **Approximate Country**: Approximate country (from timezone)
+- **Session Duration**: Session duration and page interactions
+- **UTM Parameters**: UTM parameters (marketing attribution)
 
 **What We DON'T Collect**:
-- ❌ IP addresses or geolocation data
-- ❌ Names, emails, or personal information
-- ❌ Browser fingerprints or device IDs
-- ❌ Cross-site tracking data
-- ❌ Any server-side user identification
+- ❌ **No IP Addresses**: IP addresses or geolocation data
+- ❌ **No Personal Info**: Names, emails, or personal information
+- ❌ **No Fingerprints**: Browser fingerprints or device IDs
+- ❌ **No Cross-Site Tracking**: Cross-site tracking data
+- ❌ **No Server-Side ID**: Any server-side user identification
 
 #### **🗑️ Data Deletion & User Rights**
 
@@ -128,9 +129,9 @@ localStorage.removeItem('pythia_session_timestamp')
 ```
 
 **Database Data**:
-- Delete data through your Supabase dashboard
-- All events are tied to your domain only
-- No data portability requirements (aggregate analytics only)
+- **Supabase Dashboard**: Delete data through your Supabase dashboard
+- **Domain-Scoped**: All events are tied to your domain only
+- **No Portability**: No data portability requirements (aggregate analytics only)
 
 #### **⚖️ Legal Compliance**
 
