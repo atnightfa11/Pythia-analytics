@@ -1,6 +1,16 @@
 // pythia-buffer.js - Enhanced with session tracking, device detection, and UTM parameter capture
 window.pythiaBuffer = []
 
+/**
+ * Sample Laplace(0, b) where b = 1/ε.
+ * Returns a signed float.
+ */
+function laplaceSample(epsilon) {
+  const eps = Math.max(epsilon, 1e-6)
+  const u = Math.random() - 0.5
+  return -Math.sign(u) * Math.log(1 - 2 * Math.abs(u)) / eps
+}
+
 // Enhanced session management with security considerations
 function getOrCreateSessionId() {
   let sessionId = localStorage.getItem('pythia_session_id')
@@ -285,8 +295,7 @@ async function performBufferFlush() {
   // add Laplace noise based on current ε value
   const noisy = window.pythiaBuffer.map(evt => ({
     ...evt,
-    count: evt.count + (Math.random() * 2 - 1), // Laplace noise scaled by ε
-    epsilon: epsilon, // Include ε in event metadata
+    count: evt.count + laplaceSample(epsilon),
     epsilonHistory: [], // Will be populated if history is needed
     country: getCountryFromTimezone() // Add country detection
   }))
@@ -394,8 +403,7 @@ window.flushPythia = async () => {
   // add Laplace noise based on current ε value
   const noisy = evts.map(evt => ({
     ...evt,
-    count: evt.count + (Math.random() * 2 - 1), // Laplace noise scaled by ε
-    epsilon: epsilon, // Include ε in event metadata
+    count: evt.count + laplaceSample(epsilon),
     country: getCountryFromTimezone() // Add country detection
   }))
 
@@ -564,8 +572,8 @@ window.pythiaTestAlert = async (options = {}) => {
 
         // Apply Laplace noise as per privacy requirements
         const epsilon = window.pythiaStore?.getState?.()?.epsilon || 1.0
-        testEvent.count = testEvent.count + (Math.random() * 2 - 1) // Laplace noise
-        testEvent.epsilon = epsilon
+        testEvent.count = testEvent.count + laplaceSample(epsilon)
+        // testEvent.epsilon removed to avoid leaking privacy budget
 
         window.pythiaBuffer.push(testEvent)
       }
@@ -625,6 +633,23 @@ window.pythiaCustomAlert = async (eventCount, deviceType = 'Desktop', country = 
     country
   })
 }
+
+/** Force a final flush before the page disappears */
+async function finalFlush() {
+  // If there is nothing left, bail early
+  if (!window.pythiaBuffer?.length) return;
+  // Re-use the same logic that performBufferFlush already implements
+  await performBufferFlush();
+}
+
+/* Listen for the two situations where we might lose data */
+window.addEventListener('beforeunload', finalFlush);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    // Page is being hidden – try a quick flush
+    finalFlush();
+  }
+});
 
 // Visibility change listener to pause/resume flushing
 document.addEventListener('visibilitychange', () => {

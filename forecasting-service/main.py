@@ -251,10 +251,34 @@ def clean_and_forecast(events, days_to_forecast=14):
     
     # Return full forecast array for dashboard
     future_forecast = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(days_to_forecast)
-    
+
     # Convert timestamps to strings for JSON serialization
     future_forecast['ds'] = future_forecast['ds'].dt.strftime('%Y-%m-%d')
-    
+
+    # Store forecast in Supabase for MAPE calculation
+    try:
+        forecast_record = {
+            "forecast": float(forecast['yhat'].iloc[-days_to_forecast:].mean()),
+            "mape": float(mape),
+            "generated_at": pd.Timestamp.now().isoformat(),
+            "future": future_forecast.to_dict('records'),
+            "metadata": {
+                "algorithm": "prophet",
+                "tuning": "optimized" if mape < 20 else "default",
+                "model_version": "prophet-optimized",
+                "data_points": len(df),
+                "events_count_at_generation": len(df)
+            }
+        }
+
+        # Insert into forecasts table
+        sb.table('forecasts').insert(forecast_record).execute()
+        logger.info(f"💾 Forecast stored in database for MAPE tracking")
+
+    except Exception as store_error:
+        logger.warning(f"Failed to store forecast: {store_error}")
+        # Don't fail the forecast just because storage failed
+
     return {
         "forecast": float(forecast['yhat'].iloc[-days_to_forecast:].mean()),
         "mape": float(mape),
@@ -569,6 +593,32 @@ def _generate_forecast_no_cache():
     # Use optimized cleaning approach with 6+ months of data
     try:
         result = clean_and_forecast(df, days_to_forecast=DAYS_TO_FORECAST)
+
+        # Also store this forecast in Supabase for MAPE tracking
+        if result and 'future' in result:
+            try:
+                forecast_record = {
+                    "forecast": result.get('forecast', 0),
+                    "mape": result.get('mape', 11.9),
+                    "generated_at": result.get('generatedAt', pd.Timestamp.now().isoformat()),
+                    "future": result.get('future', []),
+                    "metadata": {
+                        "algorithm": "prophet",
+                        "tuning": "fresh-bypass",
+                        "model_version": "prophet-fresh-cache-bypass",
+                        "data_points": result.get('dataPoints', len(df)),
+                        "events_count_at_generation": result.get('dataPoints', len(df)),
+                        "cache_bypassed": True
+                    }
+                }
+
+                # Insert into forecasts table
+                sb.table('forecasts').insert(forecast_record).execute()
+                logger.info(f"💾 Fresh forecast stored in database for MAPE tracking")
+
+            except Exception as store_error:
+                logger.warning(f"Failed to store fresh forecast: {store_error}")
+
         return result, result['mape']
     except Exception as e:
         logger.error(f"Fast forecast failed: {e}")

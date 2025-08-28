@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { usePrivacyConfig } from '../hooks/usePrivacyConfig';
 import { Shield, Sliders, Bell, BellOff, Info } from 'lucide-react';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
@@ -49,7 +50,8 @@ export function PrivacyControls({
   onEpsilonChange,
   className = ""
 }: PrivacyControlsProps) {
-  const [dailyMax] = useState(2.0); // Daily privacy budget limit
+  const cfg = usePrivacyConfig();
+  const dailyMax = cfg?.dailyMax ?? 2.0; // Daily privacy budget limit (fallback during load)
   const [used, setUsed] = useState(0); // Track actual usage
   const [lastReset, setLastReset] = useState(Date.now());
   const [digestEnabled, setDigestEnabled] = useState(false);
@@ -109,9 +111,11 @@ export function PrivacyControls({
   const trackEventPrivacyCost = (eventCount: number, epsilon: number) => {
     // Base cost per event is small, but increases with lower epsilon
     const baseCostPerEvent = 0.01
-    const epsilonMultiplier = epsilon <= 0.5 ? 2.0 :
-                            epsilon <= 1.0 ? 1.5 :
-                            epsilon <= 1.5 ? 1.2 : 1.0
+    const epsilonMultiplier = (() => {
+      if (!cfg) return 1.0
+      const entry = cfg.epsilonCostMap.find(e => epsilon <= e.maxEpsilon)
+      return entry?.multiplier ?? 1.0
+    })()
 
     const totalCost = baseCostPerEvent * eventCount * epsilonMultiplier
     const newUsed = Math.min(dailyMax, used + totalCost)

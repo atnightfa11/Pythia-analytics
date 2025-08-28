@@ -44,6 +44,7 @@ PYTHON_SERVICE_URL=https://forecasting-service.fly.dev
 Pythia Analytics is built with privacy as the foundation. We implement multiple layers of privacy protection:
 
 #### **🎯 Core Privacy Commitments**
+
 - **No Personal Identifiers**: We never collect names, emails, IP addresses, or any personally identifiable information
 - **Client-Side Processing**: All data processing happens in your users' browsers, never on our servers
 - **No Cross-Site Tracking**: Analytics data is scoped to your single domain only
@@ -52,17 +53,20 @@ Pythia Analytics is built with privacy as the foundation. We implement multiple 
 #### **🕒 Data Retention & Automatic Cleanup**
 
 **Session Data (24 hours)**:
+
 - **Session Data**: Session IDs are automatically regenerated every 24 hours
 - **No Persistent Tracking**: No persistent tracking across sessions
 - **Natural Expiration**: Session data expires naturally and cannot be recovered
 
 **Browser Storage Cleanup (7 days)**:
+
 - **Safari ITP Mirror**: Mirrors Safari's Intelligent Tracking Prevention (ITP) limits
 - **Automatic Cleanup**: All localStorage and sessionStorage data automatically cleaned up after 7 days
 - **Proactive Removal**: Old session data is proactively removed to prevent accumulation
 - **Data Integrity**: Data corruption detection and automatic cleanup of malformed data
 
 **Event Data (Configurable)**:
+
 - **Your Database**: Raw events are stored in your Supabase database
 - **User Control**: Retention period is controlled by your database policies
 - **Full Control**: No automatic deletion - you control data lifecycle
@@ -70,12 +74,14 @@ Pythia Analytics is built with privacy as the foundation. We implement multiple 
 #### **🔐 Differential Privacy Implementation**
 
 **Noise Injection**:
+
 - **Laplace Noise**: All numeric data receives Laplace noise before transmission
 - **Configurable Privacy**: Privacy budget (ε) is configurable per user (default: ε=1.0)
 - **Privacy-Strength Balance**: Higher privacy settings add more noise for stronger protection
 - **Mathematical Guarantees**: Mathematical guarantees prevent re-identification
 
 **Geographic Data**:
+
 - **Timezone-Based**: Country detection uses browser timezone only (no GPS or IP geolocation)
 - **Approximate Mapping**: Approximate mapping: timezone → country code (e.g., "America/New_York" → "US")
 - **No Precise Location**: No precise location data or regional identification
@@ -93,6 +99,7 @@ graph TD
 ```
 
 **Security Features**:
+
 - **HTTPS Encryption**: All data transmitted over HTTPS
 - **No Third Parties**: No third-party analytics services
 - **No Data Sharing**: No data sharing or selling
@@ -101,6 +108,7 @@ graph TD
 #### **📊 What We Collect**
 
 **Technical Data Only**:
+
 - **Event Types**: Event types (pageview, click, custom events)
 - **Event Counts**: Event counts with differential privacy noise
 - **Device Type**: Device type (from User-Agent string)
@@ -109,6 +117,7 @@ graph TD
 - **UTM Parameters**: UTM parameters (marketing attribution)
 
 **What We DON'T Collect**:
+
 - ❌ **No IP Addresses**: IP addresses or geolocation data
 - ❌ **No Personal Info**: Names, emails, or personal information
 - ❌ **No Fingerprints**: Browser fingerprints or device IDs
@@ -118,6 +127,7 @@ graph TD
 #### **🗑️ Data Deletion & User Rights**
 
 **Immediate Data Deletion**:
+
 ```javascript
 // Users can clear all data immediately:
 localStorage.clear()
@@ -129,6 +139,7 @@ localStorage.removeItem('pythia_session_timestamp')
 ```
 
 **Database Data**:
+
 - **Supabase Dashboard**: Delete data through your Supabase dashboard
 - **Domain-Scoped**: All events are tied to your domain only
 - **No Portability**: No data portability requirements (aggregate analytics only)
@@ -143,6 +154,7 @@ localStorage.removeItem('pythia_session_timestamp')
 #### **🔧 Technical Implementation**
 
 **Automatic Cleanup Code**:
+
 ```javascript
 // Session expiration (24 hours)
 const SESSION_DURATION = 24 * 60 * 60 * 1000 // 24 hours
@@ -156,6 +168,7 @@ if (sessionAge > MAX_SESSION_AGE) {
 ```
 
 **Differential Privacy Code**:
+
 ```javascript
 // Laplace noise injection
 const noise = Math.random() * 2 - 1 // Random between -1 and 1
@@ -163,6 +176,7 @@ const noisyCount = event.count + noise * epsilon
 ```
 
 **Automatic Cleanup Code**:
+
 ```javascript
 // Proactive data cleanup - mirrors Safari ITP
 function cleanupOldData() {
@@ -178,6 +192,7 @@ function cleanupOldData() {
 ```
 
 **Country Detection Code**:
+
 ```javascript
 // Privacy-preserving geographic detection
 function getCountryFromTimezone() {
@@ -207,6 +222,7 @@ function getCountryFromTimezone() {
 ### End-to-End Testing Workflow
 
 1. **Setup Environment**:
+
    ```bash
    # Copy environment template
    cp .env.example .env
@@ -214,12 +230,15 @@ function getCountryFromTimezone() {
    ```
 
 2. **Seed Test Data**:
+
    ```bash
    npm run seed
    ```
+
    This injects 30 days of realistic aggregate data with randomized mobile/desktop traffic patterns.
 
 3. **Start Development Server**:
+
    ```bash
    npm run dev
    # Or with Netlify dev (recommended)
@@ -227,9 +246,11 @@ function getCountryFromTimezone() {
    ```
 
 4. **Test Forecast API**:
+
    ```bash
    npm run forecast
    ```
+
    This calls `/.netlify/functions/forecast?force=true` and prints MAPE + generatedAt.
 
 ### Browser Console Testing
@@ -260,6 +281,7 @@ window.pythiaStore.getState()  // Check current ε value
 ### Environment Variables
 
 ### Local Development (.env file)
+
 ```env
 # Required
 VITE_SUPABASE_URL=https://your-project.supabase.co
@@ -322,12 +344,14 @@ curl "https://your-site-name.netlify.app/.netlify/functions/debug-env"
 **Root Cause**: Missing `SUPABASE_SERVICE_ROLE_KEY` in live deployment
 
 **What's Happening**:
+
 - Local development may work with anon key in some cases
 - Live deployment requires service role key for forecast function
 - When service role key is missing, forecast function fails and returns default 11.9% MAPE
 - This is why it works locally but not when deployed
 
 **Solution**:
+
 1. Get your Supabase service role key from Supabase Dashboard → Settings → API
 2. Add `SUPABASE_SERVICE_ROLE_KEY=your_key_here` in Netlify environment variables
 3. Trigger a new deployment
@@ -341,4 +365,4 @@ curl "https://your-site-name.netlify.app/.netlify/functions/debug-env"
 
 ---
 
-*Built for the bolt.new hackathon - Privacy-first analytics with predictive insights*
+Privacy-first analytics with predictive insights*
